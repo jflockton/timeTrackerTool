@@ -12,10 +12,11 @@ from datetime import date, datetime, timedelta
 from importlib.resources import files
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -40,12 +41,32 @@ FLUSH_EVERY_TICKS = 10
 
 
 def app_icon() -> QIcon:
-    """The bundled stopwatch icon (regenerate with scripts/make_icon.py)."""
+    """The bundled stopwatch icon (regenerate with scripts/make_assets.py)."""
     return QIcon(str(files("timetracker") / "assets" / "icon.png"))
 
 
-class TaskRow(QWidget):
-    """One task: a checkable button showing name + today's cumulative time."""
+def banner_pixmap() -> QPixmap:
+    """The boss-cracking-a-whip-at-a-sundial banner (scripts/make_assets.py)."""
+    return QPixmap(str(files("timetracker") / "assets" / "banner.png"))
+
+
+# Card styling for task rows; [running="true"] lights the active task up.
+STYLESHEET = """
+QFrame#taskCard {
+    border: 1px solid rgba(148, 163, 184, 0.65);
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.10);
+}
+QFrame#taskCard[running="true"] {
+    border: 2px solid #f97316;
+    background: rgba(249, 115, 22, 0.16);
+}
+QFrame#taskCard QLabel { border: none; background: transparent; }
+"""
+
+
+class TaskRow(QFrame):
+    """One task in its own bordered card: name, today's time, start/stop."""
 
     def __init__(self, task_id: str, name: str, window: "MainWindow") -> None:
         super().__init__()
@@ -53,16 +74,30 @@ class TaskRow(QWidget):
         self.name = name
         self.window = window
 
+        self.setObjectName("taskCard")
+        self.setProperty("running", "false")
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._context_menu)
+
         self.button = QPushButton()
         self.button.setCheckable(True)
-        self.button.setMinimumHeight(44)
+        self.button.setFixedSize(84, 36)
         self.button.clicked.connect(self._on_clicked)
-        self.button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.button.customContextMenuRequested.connect(self._context_menu)
+
+        self.name_label = QLabel()
+        name_font = self.name_label.font()
+        name_font.setBold(True)
+        name_font.setPointSize(name_font.pointSize() + 1)
+        self.name_label.setFont(name_font)
+
+        self.time_label = QLabel()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.addWidget(self.button)
+        layout.addSpacing(6)
+        layout.addWidget(self.name_label, stretch=1)
+        layout.addWidget(self.time_label)
         self.refresh()
 
     def _on_clicked(self) -> None:
@@ -72,7 +107,7 @@ class TaskRow(QWidget):
         menu = QMenu(self)
         rename = menu.addAction("Rename…")
         archive = menu.addAction("Archive")
-        chosen = menu.exec(self.button.mapToGlobal(pos))
+        chosen = menu.exec(self.mapToGlobal(pos))
         if chosen == rename:
             self.window.rename_task(self.task_id, self.name)
         elif chosen == archive:
@@ -81,9 +116,14 @@ class TaskRow(QWidget):
     def refresh(self) -> None:
         running = self.window.engine.running_task == self.task_id
         seconds = self.window.today_seconds(self.task_id)
-        marker = "■ " if running else "▶ "
-        self.button.setText(f"{marker}{self.name}   —   {format_hms(seconds)} today")
+        self.button.setText("■ Stop" if running else "▶ Start")
         self.button.setChecked(running)
+        self.name_label.setText(self.name)
+        self.time_label.setText(f"{format_hms(seconds)} today")
+        if self.property("running") != str(running).lower():
+            self.setProperty("running", str(running).lower())
+            self.style().unpolish(self)
+            self.style().polish(self)
 
 
 class WeekReportDialog(QDialog):
@@ -160,7 +200,14 @@ class MainWindow(QMainWindow):
         self.rows: dict[str, TaskRow] = {}
 
         self.setWindowTitle("timeTrackerTool")
-        self.resize(420, 480)
+        self.resize(440, 560)
+        self.setStyleSheet(STYLESHEET)
+
+        self.banner = QLabel()
+        self.banner.setPixmap(
+            banner_pixmap().scaledToWidth(408, Qt.TransformationMode.SmoothTransformation)
+        )
+        self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.new_task_edit = QLineEdit()
         self.new_task_edit.setPlaceholderText("New task name…")
@@ -172,6 +219,7 @@ class MainWindow(QMainWindow):
         top.addWidget(add_btn)
 
         self.rows_layout = QVBoxLayout()
+        self.rows_layout.setSpacing(8)
         self.rows_layout.addStretch()
         rows_host = QWidget()
         rows_host.setLayout(self.rows_layout)
@@ -184,6 +232,7 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         layout = QVBoxLayout(central)
+        layout.addWidget(self.banner)
         layout.addLayout(top)
         layout.addWidget(scroll, stretch=1)
         layout.addWidget(report_btn)
