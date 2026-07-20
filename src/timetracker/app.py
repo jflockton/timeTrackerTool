@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import sys
 from datetime import date, datetime, timedelta
+from importlib.resources import files
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -35,6 +37,11 @@ from .report import build_week_report, week_dates
 
 TICK_MS = 1000
 FLUSH_EVERY_TICKS = 10
+
+
+def app_icon() -> QIcon:
+    """The bundled stopwatch icon (regenerate with scripts/make_icon.py)."""
+    return QIcon(str(files("timetracker") / "assets" / "icon.png"))
 
 
 class TaskRow(QWidget):
@@ -258,6 +265,7 @@ class MainWindow(QMainWindow):
         WeekReportDialog(self).exec()
 
     def closeEvent(self, event) -> None:
+        self.timer.stop()
         self.engine.stop(datetime.now())
         self.flush_now()
         self.conn.close()
@@ -266,6 +274,7 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon())  # window icon everywhere; Dock icon on macOS
     window = MainWindow()
     window.show()
     return app.exec()

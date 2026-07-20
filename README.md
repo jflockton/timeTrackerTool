@@ -29,6 +29,10 @@ one button per task.
   `TIMETRACKER_DB` environment variable.
 - Layout: `core.py` (pure timer logic) / `db.py` (schema + repository) /
   `report.py` (pure report building) / `app.py` (the only Qt-aware module).
+- App icon: `src/timetracker/assets/icon.png`, set at launch (Dock icon on
+  macOS, window/taskbar icon elsewhere). Regenerate with
+  `poetry run python scripts/make_icon.py` — it is drawn in code, no source
+  image. A proper `.icns`/`.ico` comes with packaging.
 
 ## Running
 
