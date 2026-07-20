@@ -77,6 +77,30 @@ def test_add_task_via_ui(make_window, tmp_path):
     assert window.new_task_edit.text() == ""
 
 
+def test_start_flash_pulses_then_clears(make_window, tmp_path):
+    db_path = tmp_path / "flash.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    row = window.rows[task_id]
+
+    window.toggle_task(task_id)  # starting → flash begins immediately
+    assert row.property("flash") == "true"
+    assert window._flash_timer.isActive()
+
+    for _ in range(10):  # drive the pulse timer to completion by hand
+        window._flash_step()
+    assert row.property("flash") == "false"
+    assert not window._flash_timer.isActive()
+    assert window.engine.running_task == task_id  # flash is cosmetic only
+
+    window.toggle_task(task_id)  # stopping does not flash
+    assert row.property("flash") == "false"
+    assert not window._flash_timer.isActive()
+
+
 def test_mini_mode_swaps_windows_and_stays_on_top(make_window, tmp_path):
     db_path = tmp_path / "mini.db"
     seed = db.connect(db_path)

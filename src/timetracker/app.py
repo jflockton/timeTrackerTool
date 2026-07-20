@@ -42,6 +42,9 @@ FLUSH_EVERY_TICKS = 10
 # Mini-mode buttons show name + time once they are at least this tall (px)
 MINI_TEXT_THRESHOLD = 96
 DEFAULT_EMOJI = "⏱️"
+# Green "accepted" flash when a timer starts: pulse count and speed
+FLASH_PULSES = 6
+FLASH_INTERVAL_MS = 90
 
 
 def app_icon() -> QIcon:
@@ -65,6 +68,10 @@ QFrame#taskCard[running="true"] {
     border: 2px solid #f97316;
     background: rgba(249, 115, 22, 0.16);
 }
+QFrame#taskCard[flash="true"] {
+    border: 2px solid #22c55e;
+    background: rgba(34, 197, 94, 0.30);
+}
 QFrame#taskCard QLabel { border: none; background: transparent; }
 """
 
@@ -82,6 +89,7 @@ class TaskRow(QFrame):
 
         self.setObjectName("taskCard")
         self.setProperty("running", "false")
+        self.setProperty("flash", "false")
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
 
@@ -134,6 +142,12 @@ class TaskRow(QFrame):
             self.style().unpolish(self)
             self.style().polish(self)
 
+    def set_flash(self, on: bool) -> None:
+        if self.property("flash") != str(on).lower():
+            self.setProperty("flash", str(on).lower())
+            self.style().unpolish(self)
+            self.style().polish(self)
+
 
 class MiniTaskButton(QPushButton):
     """Mini-mode button: a configurable emoji that scales with the button,
@@ -143,6 +157,7 @@ class MiniTaskButton(QPushButton):
         super().__init__()
         self.task_id = task_id
         self.window = window
+        self.flashing = False
         self.setCheckable(True)
         self.setMinimumSize(44, 44)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -158,6 +173,10 @@ class MiniTaskButton(QPushButton):
 
     def shows_description(self) -> bool:
         return self.height() >= MINI_TEXT_THRESHOLD
+
+    def set_flash(self, on: bool) -> None:
+        self.flashing = on
+        self.update()
 
     def _context_menu(self, pos) -> None:
         menu = QMenu(self)
@@ -178,7 +197,10 @@ class MiniTaskButton(QPushButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect()).adjusted(3, 3, -3, -3)
-        if running:
+        if self.flashing:
+            p.setPen(QPen(QColor("#22c55e"), 3))
+            p.setBrush(QColor(34, 197, 94, 80))
+        elif running:
             p.setPen(QPen(QColor("#f97316"), 2))
             p.setBrush(QColor(249, 115, 22, 45))
         else:
@@ -340,6 +362,10 @@ class MainWindow(QMainWindow):
         self._tick_count = 0
         self.rows: dict[str, TaskRow] = {}
         self.mini: MiniWindow | None = None
+        self._flash_target: str | None = None
+        self._flash_count = 0
+        self._flash_timer = QTimer(self)
+        self._flash_timer.timeout.connect(self._flash_step)
 
         self.setWindowTitle("timeTrackerTool")
         self.resize(440, 560)
@@ -453,6 +479,8 @@ class MainWindow(QMainWindow):
                 self.rows[tid].refresh()
         if self.mini is not None:
             self.mini.refresh()
+        if self.engine.running_task == task_id:
+            self.flash_task(task_id)  # green "accepted" pulse on start
 
     def today_seconds(self, task_id: str) -> float:
         today = date.today().isoformat()
@@ -471,6 +499,35 @@ class MainWindow(QMainWindow):
             self.rows[self.engine.running_task].refresh()
         if self.mini is not None and self.mini.isVisible():
             self.mini.refresh()
+
+    # --- start flash ------------------------------------------------------
+
+    def flash_task(self, task_id: str) -> None:
+        if self._flash_target is not None:
+            self._apply_flash(self._flash_target, False)
+        self._flash_target = task_id
+        self._flash_count = 0
+        self._flash_timer.start(FLASH_INTERVAL_MS)
+        self._flash_step()
+
+    def _flash_step(self) -> None:
+        if self._flash_target is None:
+            self._flash_timer.stop()
+            return
+        if self._flash_count >= FLASH_PULSES:
+            self._flash_timer.stop()
+            self._apply_flash(self._flash_target, False)
+            self._flash_target = None
+            return
+        self._apply_flash(self._flash_target, self._flash_count % 2 == 0)
+        self._flash_count += 1
+
+    def _apply_flash(self, task_id: str, on: bool) -> None:
+        row = self.rows.get(task_id)
+        if row is not None:
+            row.set_flash(on)
+        if self.mini is not None and task_id in self.mini.buttons:
+            self.mini.buttons[task_id].set_flash(on)
 
     # --- mini mode -------------------------------------------------------
 
@@ -497,6 +554,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
+        self._flash_timer.stop()
         if self.mini is not None:
             self.mini.suppress_restore = True
             self.mini.close()

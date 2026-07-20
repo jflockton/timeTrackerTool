@@ -46,6 +46,8 @@ judgmental.
   that task, displayed live to the second.
 - 🎯 **Single-active tracking** — starting a task stops the running one. No
   accidental double-billing your own life.
+- 🟢 **Start flash** — the moment a timer is accepted, its card (and mini
+  button) pulses green so you know the click landed.
 - 💾 **Local-first storage** — everything lives in one SQLite file on your
   machine. No cloud, no account, no telemetry, no nonsense.
 - 🛡️ **Crash-tolerant** — time is flushed to disk every ~10 seconds and on
