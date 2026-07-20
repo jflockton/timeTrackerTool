@@ -10,7 +10,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-32%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
@@ -55,7 +55,10 @@ judgmental.
 - 🛡️ **Crash-tolerant** — time is flushed to disk every ~10 seconds and on
   close; a crash costs you seconds, not hours.
 - 🌙 **Midnight-aware** — leave a timer running past midnight and the seconds
-  are booked to the correct days. Night owls are people too.
+  are booked to the correct days, and every card's "today" total rolls over
+  to the new day live. Night owls are people too.
+- 🚪 **Quit-safe** — pending time is banked on close *and* on app quit, even
+  when quitting from mini mode where the main window is hidden.
 - 🪪 **Stable generated IDs** — each task gets an 8-character ID at creation;
   all logged time hangs off the ID, so renaming a task never orphans its
   history.
@@ -107,7 +110,7 @@ per task per day, upserted).
 ## 🛠️ Development
 
 ```bash
-poetry run pytest -q                        # 22 tests; GUI tests run offscreen
+poetry run pytest -q                        # 32 tests; GUI tests run offscreen
 poetry run python scripts/make_assets.py    # regenerate icon + banner artwork
 ```
 

@@ -63,7 +63,7 @@ def app_icon() -> QIcon:
 
 
 def banner_pixmap() -> QPixmap:
-    """The boss-cracking-a-whip-at-a-sundial banner (scripts/make_assets.py)."""
+    """The 80's arcade title-screen banner (regenerate with scripts/make_assets.py)."""
     return QPixmap(str(files("timetracker") / "assets" / "banner.png"))
 
 
@@ -254,7 +254,6 @@ class MiniTaskButton(QPushButton):
         running = self.window.engine.running_task == self.task_id
         name = self._row().name
         today = format_hms(self.window.today_seconds(self.task_id))
-        self.setToolTip(f"{name} — {today} today")
 
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -349,6 +348,9 @@ class MiniWindow(QWidget):
     def refresh(self) -> None:
         for button in self.buttons.values():
             button.setChecked(self.main.engine.running_task == button.task_id)
+            name = self.main.rows[button.task_id].name
+            today = format_hms(self.main.today_seconds(button.task_id))
+            button.setToolTip(f"{name} — {today} today")
             button.update()
 
     def closeEvent(self, event) -> None:
@@ -497,16 +499,17 @@ class WeekReportDialog(QDialog):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, col, item)
 
+        total_col = len(headers) - 1
         for r, row in enumerate(report.rows):
             put(r, 0, row.task_name)
             for c, secs in enumerate(row.daily_seconds):
                 put(r, c + 1, format_hms(secs) if secs else "-")
-            put(r, 8, format_hms(row.total_seconds))
+            put(r, total_col, format_hms(row.total_seconds))
         total_r = len(report.rows)
         put(total_r, 0, "TOTAL")
         for c, secs in enumerate(report.day_totals):
             put(total_r, c + 1, format_hms(secs) if secs else "-")
-        put(total_r, 8, format_hms(report.grand_total))
+        put(total_r, total_col, format_hms(report.grand_total))
         self.table.resizeColumnsToContents()
 
 
@@ -516,6 +519,8 @@ class MainWindow(QMainWindow):
         self.conn = db.connect(db_path or db.default_db_path())
         self.engine = TimerEngine()
         self._tick_count = 0
+        self._today = date.today()
+        self._shutdown_done = False
         self.rows: dict[str, TaskRow] = {}
         self.mini: MiniWindow | None = None
         self._flash_target: str | None = None
@@ -653,7 +658,14 @@ class MainWindow(QMainWindow):
         self._tick_count += 1
         if self._tick_count % FLUSH_EVERY_TICKS == 0:
             self.flush_now()
-        if self.engine.running_task in self.rows:
+        if date.today() != self._today:
+            # Midnight rollover: every card's "today" total starts from zero,
+            # not just the running one's
+            self._today = date.today()
+            self.flush_now()
+            for row in self.rows.values():
+                row.refresh()
+        elif self.engine.running_task in self.rows:
             self.rows[self.engine.running_task].refresh()
         if self.mini is not None and self.mini.isVisible():
             self.mini.refresh()
@@ -710,15 +722,24 @@ class MainWindow(QMainWindow):
     def show_report(self) -> None:
         WeekReportDialog(self).exec()
 
-    def closeEvent(self, event) -> None:
+    def shutdown(self) -> None:
+        """Stop timers, bank all pending time, close the DB. Idempotent —
+        called from closeEvent AND app.aboutToQuit, because quitting from
+        mini mode may never deliver a closeEvent to the hidden main window."""
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
         self.timer.stop()
         self._flash_timer.stop()
-        if self.mini is not None:
-            self.mini.suppress_restore = True
-            self.mini.close()
         self.engine.stop(datetime.now())
         self.flush_now()
         self.conn.close()
+
+    def closeEvent(self, event) -> None:
+        if self.mini is not None:
+            self.mini.suppress_restore = True
+            self.mini.close()
+        self.shutdown()
         super().closeEvent(event)
 
 
@@ -726,6 +747,9 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())  # window icon everywhere; Dock icon on macOS
     window = MainWindow()
+    # Safety net: flush even when quit arrives without a closeEvent
+    # (e.g. Cmd-Q while in mini mode, where the main window is hidden)
+    app.aboutToQuit.connect(window.shutdown)
     window.show()
     return app.exec()
 

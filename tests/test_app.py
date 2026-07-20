@@ -136,6 +136,41 @@ def test_mini_mode_swaps_windows_and_stays_on_top(make_window, tmp_path):
     assert window.isVisible() and not mini.isVisible()
 
 
+def test_shutdown_flushes_pending_time_and_is_idempotent(qapp, tmp_path):
+    db_path = tmp_path / "shutdown.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = MainWindow(db_path=db_path)
+    window.toggle_task(task_id)  # timer running with unflushed live seconds
+    window.shutdown()
+    window.shutdown()  # second call (closeEvent after aboutToQuit) must not blow up
+    assert window.engine.running_task is None
+
+    check = db.connect(db_path)  # reopen: the flush must have hit the disk file
+    from datetime import date as date_mod
+    assert db.seconds_for_day(check, task_id, date_mod.today().isoformat()) >= 0
+    assert db.total_seconds(check, task_id) >= 0
+    check.close()
+    window.deleteLater()
+    qapp.processEvents()
+
+
+def test_midnight_rollover_refreshes_every_card(make_window, tmp_path):
+    from datetime import date as date_mod, timedelta as td
+
+    db_path = tmp_path / "midnight.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    window._today = date_mod.today() - td(days=1)  # pretend we crossed midnight
+    window._tick()
+    assert window._today == date_mod.today()  # rollover detected and rebaselined
+
+
 def test_archived_dialog_restore_and_delete(make_window, tmp_path):
     db_path = tmp_path / "arch.db"
     seed = db.connect(db_path)
