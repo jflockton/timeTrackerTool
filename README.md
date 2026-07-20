@@ -30,9 +30,10 @@ one button per task.
 - Layout: `core.py` (pure timer logic) / `db.py` (schema + repository) /
   `report.py` (pure report building) / `app.py` (the only Qt-aware module).
 - Assets in `src/timetracker/assets/` — the stopwatch app icon (Dock icon on
-  macOS, window/taskbar icon elsewhere) and the boss-cracking-a-whip-at-a-
-  sundial header banner. Both are drawn in code, no source images: regenerate
-  with `poetry run python scripts/make_assets.py`. A proper `.icns`/`.ico`
+  macOS, window/taskbar icon elsewhere) and an 80's-arcade header banner
+  (pixel "TIME TRACKER" title, invaders, scanlines, INSERT COIN TO START).
+  Both are drawn in code, no source images: regenerate with
+  `poetry run python scripts/make_assets.py`. A proper `.icns`/`.ico`
   comes with packaging.
 - Each task renders as its own bordered card; the running task's card is
   highlighted orange.
