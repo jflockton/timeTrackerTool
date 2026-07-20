@@ -7,6 +7,8 @@ against that ID, so renaming a task never orphans its history.
 from __future__ import annotations
 
 import os
+import platform
+import re
 import sqlite3
 import sys
 import uuid
@@ -15,6 +17,10 @@ from pathlib import Path
 
 APP_DIR_NAME = "timeTrackerTool"
 DB_FILE_NAME = "timetracker.db"
+
+# Which machine wrote a time entry. Makes cross-machine merges idempotent:
+# the same (task, date, machine) row can never be double-counted.
+MACHINE = re.sub(r"[^A-Za-z0-9._-]", "", platform.node()) or "local"
 
 
 def default_db_path() -> Path:
@@ -53,8 +59,9 @@ def ensure_timetracker_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS time_entries (
             task_id    TEXT NOT NULL REFERENCES tasks(task_id),
             entry_date TEXT NOT NULL,
+            origin     TEXT NOT NULL DEFAULT '',
             seconds    REAL NOT NULL DEFAULT 0,
-            PRIMARY KEY (task_id, entry_date)
+            PRIMARY KEY (task_id, entry_date, origin)
         );
         """
     )
@@ -63,6 +70,26 @@ def ensure_timetracker_tables(conn: sqlite3.Connection) -> None:
                for row in conn.execute("PRAGMA table_info(tasks)")}
     if "emoji" not in columns:
         conn.execute("ALTER TABLE tasks ADD COLUMN emoji TEXT NOT NULL DEFAULT ''")
+    # Migration for databases created before cross-machine origins existed:
+    # the primary key changes, so the table has to be rebuilt.
+    entry_columns = {row["name"] if isinstance(row, sqlite3.Row) else row[1]
+                     for row in conn.execute("PRAGMA table_info(time_entries)")}
+    if "origin" not in entry_columns:
+        conn.executescript(
+            """
+            ALTER TABLE time_entries RENAME TO time_entries_old;
+            CREATE TABLE time_entries (
+                task_id    TEXT NOT NULL REFERENCES tasks(task_id),
+                entry_date TEXT NOT NULL,
+                origin     TEXT NOT NULL DEFAULT '',
+                seconds    REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (task_id, entry_date, origin)
+            );
+            INSERT INTO time_entries (task_id, entry_date, origin, seconds)
+                SELECT task_id, entry_date, '', seconds FROM time_entries_old;
+            DROP TABLE time_entries_old;
+            """
+        )
     conn.commit()
 
 
@@ -127,35 +154,96 @@ def total_seconds(conn: sqlite3.Connection, task_id: str) -> float:
     return float(row["s"])
 
 
-def add_seconds(conn: sqlite3.Connection, task_id: str, entry_date: str, seconds: float) -> None:
-    """Add seconds to a task's cumulative total for a date (upsert)."""
+def add_seconds(conn: sqlite3.Connection, task_id: str, entry_date: str,
+                seconds: float, origin: str | None = None) -> None:
+    """Add seconds to a task's cumulative total for a date (upsert),
+    recorded against this machine's origin by default."""
     if seconds <= 0:
         return
     conn.execute(
         """
-        INSERT INTO time_entries (task_id, entry_date, seconds) VALUES (?, ?, ?)
-        ON CONFLICT (task_id, entry_date) DO UPDATE SET seconds = seconds + excluded.seconds
+        INSERT INTO time_entries (task_id, entry_date, origin, seconds)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (task_id, entry_date, origin)
+        DO UPDATE SET seconds = seconds + excluded.seconds
         """,
-        (task_id, entry_date, seconds),
+        (task_id, entry_date, MACHINE if origin is None else origin, seconds),
+    )
+    conn.commit()
+
+
+def deduct_seconds(conn: sqlite3.Connection, task_id: str, entry_date: str,
+                   seconds: float) -> None:
+    """Remove seconds from this machine's entry for a date (used by idle
+    discard), clamping at zero — never goes negative."""
+    if seconds <= 0:
+        return
+    conn.execute(
+        """
+        UPDATE time_entries SET seconds = MAX(0, seconds - ?)
+        WHERE task_id = ? AND entry_date = ? AND origin = ?
+        """,
+        (seconds, task_id, entry_date, MACHINE),
     )
     conn.commit()
 
 
 def seconds_for_day(conn: sqlite3.Connection, task_id: str, entry_date: str) -> float:
+    """Total for a task on a date, summed across all machine origins."""
     row = conn.execute(
-        "SELECT seconds FROM time_entries WHERE task_id = ? AND entry_date = ?",
+        "SELECT COALESCE(SUM(seconds), 0) AS s FROM time_entries"
+        " WHERE task_id = ? AND entry_date = ?",
         (task_id, entry_date),
     ).fetchone()
-    return float(row["seconds"]) if row else 0.0
+    return float(row["s"])
 
 
 def entries_between(
     conn: sqlite3.Connection, first_date: str, last_date: str
 ) -> dict[tuple[str, str], float]:
-    """(task_id, entry_date) -> seconds for all entries in the inclusive range."""
+    """(task_id, entry_date) -> seconds (all origins summed) in the range."""
     rows = conn.execute(
-        "SELECT task_id, entry_date, seconds FROM time_entries"
-        " WHERE entry_date BETWEEN ? AND ?",
+        "SELECT task_id, entry_date, SUM(seconds) AS s FROM time_entries"
+        " WHERE entry_date BETWEEN ? AND ? GROUP BY task_id, entry_date",
         (first_date, last_date),
     )
-    return {(r["task_id"], r["entry_date"]): float(r["seconds"]) for r in rows}
+    return {(r["task_id"], r["entry_date"]): float(r["s"]) for r in rows}
+
+
+def merge_from(conn: sqlite3.Connection, other: sqlite3.Connection) -> dict[str, int]:
+    """Merge another timetracker database into this one. Idempotent: rows are
+    keyed by (task, date, origin) and the larger seconds value wins, so
+    merging the same file twice never double-counts."""
+    stats = {"tasks_added": 0, "entries_merged": 0}
+    for task in other.execute("SELECT * FROM tasks"):
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO tasks (task_id, name, created_at, archived, emoji)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (task["task_id"], task["name"], task["created_at"],
+             task["archived"], task["emoji"]),
+        )
+        stats["tasks_added"] += cur.rowcount
+    for entry in other.execute("SELECT * FROM time_entries"):
+        existing = conn.execute(
+            "SELECT seconds FROM time_entries"
+            " WHERE task_id = ? AND entry_date = ? AND origin = ?",
+            (entry["task_id"], entry["entry_date"], entry["origin"]),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO time_entries (task_id, entry_date, origin, seconds)"
+                " VALUES (?, ?, ?, ?)",
+                (entry["task_id"], entry["entry_date"], entry["origin"],
+                 entry["seconds"]),
+            )
+            stats["entries_merged"] += 1
+        elif entry["seconds"] > existing["seconds"]:
+            conn.execute(
+                "UPDATE time_entries SET seconds = ?"
+                " WHERE task_id = ? AND entry_date = ? AND origin = ?",
+                (entry["seconds"], entry["task_id"], entry["entry_date"],
+                 entry["origin"]),
+            )
+            stats["entries_merged"] += 1
+    conn.commit()
+    return stats

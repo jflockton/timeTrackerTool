@@ -86,6 +86,12 @@ def _split_by_date(start: datetime, end: datetime) -> list[tuple[str, float]]:
     return [(d, s) for d, s in pieces if s > 0]
 
 
+# Public alias: split an arbitrary span into per-date pieces (used by the
+# idle-discard flow as well as the engine itself).
+def split_span_by_date(start: datetime, end: datetime) -> list[tuple[str, float]]:
+    return _split_by_date(start, end)
+
+
 def format_hms(seconds: float) -> str:
     """1h 2m 3s -> '1:02:03'; always shows hours for easy scanning."""
     total = int(round(seconds))

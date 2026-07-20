@@ -1,6 +1,6 @@
 [project]
 name = "timetracker"
-version = "0.2.0"
+version = "0.3.0"
 description = "Cross-platform per-task timer buttons with daily totals and a weekly breakdown"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -9,12 +9,14 @@ dependencies = [
 
 [project.scripts]
 timetracker = "timetracker.app:main"
+timetracker-merge = "timetracker.merge_cli:main"
 
 [tool.poetry]
 packages = [{ include = "timetracker", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
+pyinstaller = "^6.21.0"
 
 [build-system]
 requires = ["poetry-core>=2.0"]

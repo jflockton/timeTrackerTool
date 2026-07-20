@@ -199,6 +199,44 @@ def test_archived_dialog_restore_and_delete(make_window, tmp_path):
     dialog.deleteLater()
 
 
+def test_discard_span_removes_away_time(make_window, tmp_path):
+    from datetime import datetime
+
+    db_path = tmp_path / "idle.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    db.add_seconds(seed, task_id, "2026-07-20", 3600)
+    seed.close()
+
+    window = make_window(db_path)
+    window.discard_span(task_id,
+                        datetime(2026, 7, 20, 10, 0, 0),
+                        datetime(2026, 7, 20, 10, 10, 0))
+    assert db.seconds_for_day(window.conn, task_id, "2026-07-20") == 3000
+
+
+def test_report_dialog_month_toggle_and_csv(make_window, tmp_path):
+    from timetracker.app import WeekReportDialog
+
+    db_path = tmp_path / "report.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    from datetime import date as date_mod
+    db.add_seconds(window.conn, task_id, date_mod.today().isoformat(), 600)
+
+    dialog = WeekReportDialog(window)
+    assert dialog.table.columnCount() == 9  # Task + 7 days + Total
+    dialog.toggle_mode()
+    assert dialog.mode == "month"
+    assert dialog.table.columnCount() >= 30  # Task + 28..31 days + Total
+    dialog.toggle_mode()
+    assert dialog.mode == "week"
+    dialog.deleteLater()
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)

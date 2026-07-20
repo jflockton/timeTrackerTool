@@ -109,6 +109,60 @@ def test_emoji_column_migrates_old_databases_and_updates():
     connection.close()
 
 
+def test_origin_migration_rebuilds_old_time_entries():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.executescript(
+        """
+        CREATE TABLE tasks (task_id TEXT PRIMARY KEY, name TEXT NOT NULL,
+            created_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
+            emoji TEXT NOT NULL DEFAULT '');
+        CREATE TABLE time_entries (task_id TEXT NOT NULL, entry_date TEXT NOT NULL,
+            seconds REAL NOT NULL DEFAULT 0, PRIMARY KEY (task_id, entry_date));
+        INSERT INTO tasks VALUES ('abc12345', 'Old', '2026-01-01', 0, '');
+        INSERT INTO time_entries VALUES ('abc12345', '2026-07-20', 120);
+        """
+    )
+    db.ensure_timetracker_tables(connection)  # migrates to (task,date,origin) PK
+    assert db.seconds_for_day(connection, "abc12345", "2026-07-20") == 120
+    db.add_seconds(connection, "abc12345", "2026-07-20", 30)  # new origin row
+    assert db.seconds_for_day(connection, "abc12345", "2026-07-20") == 150
+    connection.close()
+
+
+def test_deduct_seconds_clamps_and_targets_this_machine(conn):
+    task_id = db.create_task(conn, "Task")
+    db.add_seconds(conn, task_id, "2026-07-20", 100)          # this machine
+    db.add_seconds(conn, task_id, "2026-07-20", 50, "other")  # another machine
+    db.deduct_seconds(conn, task_id, "2026-07-20", 30)
+    assert db.seconds_for_day(conn, task_id, "2026-07-20") == 120
+    db.deduct_seconds(conn, task_id, "2026-07-20", 9999)  # clamps at zero
+    assert db.seconds_for_day(conn, task_id, "2026-07-20") == 50  # other machine kept
+
+
+def test_merge_is_idempotent_and_sums_across_machines(conn):
+    other = db.connect(":memory:")
+    a = db.create_task(conn, "Shared")
+    # simulate the same task tracked on another machine
+    other.execute(
+        "INSERT INTO tasks (task_id, name, created_at) VALUES (?, 'Shared', 'x')", (a,))
+    other.commit()
+    b = db.create_task(other, "WindowsOnly")
+    db.add_seconds(conn, a, "2026-07-20", 100)          # local machine's time
+    db.add_seconds(other, a, "2026-07-20", 40, "winbox")
+    db.add_seconds(other, b, "2026-07-21", 60, "winbox")
+
+    stats = db.merge_from(conn, other)
+    assert stats == {"tasks_added": 1, "entries_merged": 2}
+    assert db.seconds_for_day(conn, a, "2026-07-20") == 140  # summed across origins
+    assert db.seconds_for_day(conn, b, "2026-07-21") == 60
+
+    again = db.merge_from(conn, other)  # merging twice must change nothing
+    assert again == {"tasks_added": 0, "entries_merged": 0}
+    assert db.seconds_for_day(conn, a, "2026-07-20") == 140
+    other.close()
+
+
 def test_default_db_path_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("TIMETRACKER_DB", str(tmp_path / "custom.db"))
     assert db.default_db_path() == tmp_path / "custom.db"

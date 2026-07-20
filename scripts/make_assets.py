@@ -137,6 +137,10 @@ def make_icon() -> None:
 
     p.end()
     pixmap.save(str(ASSETS / "icon.png"), "PNG")
+    # Windows packaging icon (PyInstaller --icon). 256px is the max ICO size.
+    pixmap.scaled(256, 256, Qt.AspectRatioMode.IgnoreAspectRatio,
+                  Qt.TransformationMode.SmoothTransformation).save(
+        str(ASSETS / "icon.ico"), "ICO")
 
 
 # Pixel-art sprites, invader-style ('X' = filled cell)

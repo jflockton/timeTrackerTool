@@ -7,16 +7,19 @@ a crash loses at most FLUSH_EVERY_TICKS seconds.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date, datetime, timedelta
 from importlib.resources import files
 
-from PySide6.QtCore import QRectF, Qt, QTimer
-from PySide6.QtGui import QFontMetrics, QIcon, QPainter, QPen, QColor, QPixmap
+from PySide6.QtCore import QLockFile, QRectF, Qt, QTimer
+from PySide6.QtGui import QAction, QFontMetrics, QIcon, QPainter, QPen, QColor, QPixmap
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -29,6 +32,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSystemTrayIcon,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -36,8 +40,9 @@ from PySide6.QtWidgets import (
 )
 
 from . import db
-from .core import TimerEngine, format_hms
-from .report import build_week_report, week_dates
+from .core import TimerEngine, format_hms, split_span_by_date
+from .idle import IDLE_THRESHOLD_S, IdleWatcher, system_idle_seconds
+from .report import build_month_report, build_week_report, month_dates, to_csv, week_dates
 
 TICK_MS = 1000
 FLUSH_EVERY_TICKS = 10
@@ -47,6 +52,10 @@ DEFAULT_EMOJI = "⏱️"
 # Green "accepted" flash when a timer starts: pulse count and speed
 FLASH_PULSES = 6
 FLASH_INTERVAL_MS = 90
+# System-idle poll cadence (the ioreg call is cheap but not free)
+IDLE_CHECK_EVERY_TICKS = 5
+# Single-instance local-socket name (per-user)
+INSTANCE_SERVER = f"timeTrackerTool-{os.environ.get('USER') or os.environ.get('USERNAME') or 'user'}"
 
 # Quick-pick emoji for the Set emoji dialog (any emoji can still be typed)
 EMOJI_CHOICES = [
@@ -448,26 +457,33 @@ class ArchivedTasksDialog(QDialog):
 
 
 class WeekReportDialog(QDialog):
-    """Day-by-day table for one Monday–Sunday week, with prev/next paging."""
+    """Day-by-day table, week or month view, with paging and CSV export."""
 
     def __init__(self, window: "MainWindow") -> None:
         super().__init__(window)
         self.window = window
         self.anchor = date.today()
-        self.setWindowTitle("Weekly report")
-        self.resize(720, 360)
+        self.mode = "week"
+        self.setWindowTitle("Report")
+        self.resize(760, 380)
 
         self.title = QLabel()
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        prev_btn = QPushButton("◀ Previous week")
-        next_btn = QPushButton("Next week ▶")
-        prev_btn.clicked.connect(lambda: self._shift(-7))
-        next_btn.clicked.connect(lambda: self._shift(7))
+        self.prev_btn = QPushButton("◀ Previous")
+        self.next_btn = QPushButton("Next ▶")
+        self.prev_btn.clicked.connect(lambda: self._shift(-1))
+        self.next_btn.clicked.connect(lambda: self._shift(1))
+        self.mode_btn = QPushButton("Month view")
+        self.mode_btn.clicked.connect(self.toggle_mode)
+        export_btn = QPushButton("Export CSV…")
+        export_btn.clicked.connect(self.export_csv)
 
         nav = QHBoxLayout()
-        nav.addWidget(prev_btn)
+        nav.addWidget(self.prev_btn)
         nav.addWidget(self.title, stretch=1)
-        nav.addWidget(next_btn)
+        nav.addWidget(self.next_btn)
+        nav.addWidget(self.mode_btn)
+        nav.addWidget(export_btn)
 
         self.table = QTableWidget()
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -477,18 +493,54 @@ class WeekReportDialog(QDialog):
         layout.addWidget(self.table)
         self.refresh()
 
-    def _shift(self, days: int) -> None:
-        self.anchor += timedelta(days=days)
+    def toggle_mode(self) -> None:
+        self.mode = "month" if self.mode == "week" else "week"
+        self.mode_btn.setText("Week view" if self.mode == "month" else "Month view")
         self.refresh()
 
+    def _shift(self, direction: int) -> None:
+        if self.mode == "week":
+            self.anchor += timedelta(days=7 * direction)
+        else:
+            first = self.anchor.replace(day=1)
+            if direction < 0:
+                self.anchor = (first - timedelta(days=1)).replace(day=1)
+            else:
+                self.anchor = (first + timedelta(days=32)).replace(day=1)
+        self.refresh()
+
+    def _current_report(self):
+        if self.mode == "week":
+            return build_week_report(self.window.conn, self.anchor)
+        return build_month_report(self.window.conn, self.anchor)
+
+    def export_csv(self) -> None:
+        if self.mode == "week":
+            stamp = week_dates(self.anchor)[0].isoformat()
+            default = f"timetracker_week_{stamp}.csv"
+        else:
+            default = f"timetracker_{self.anchor.strftime('%Y-%m')}.csv"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV", default, "CSV files (*.csv)")
+        if not path:
+            return
+        self.window.flush_now()
+        with open(path, "w", newline="", encoding="utf-8") as handle:
+            handle.write(to_csv(self._current_report()))
+
     def refresh(self) -> None:
-        self.window.flush_now()  # so the open week includes up-to-the-second time
-        report = build_week_report(self.window.conn, self.anchor)
-        days = week_dates(self.anchor)
-        self.title.setText(
-            f"{days[0].strftime('%d %b %Y')} – {days[-1].strftime('%d %b %Y')}"
-        )
-        headers = ["Task"] + [d.strftime("%a %d") for d in days] + ["Total"]
+        self.window.flush_now()  # so the open period includes up-to-the-second time
+        report = self._current_report()
+        days = report.dates
+        if self.mode == "week":
+            self.title.setText(
+                f"{days[0].strftime('%d %b %Y')} – {days[-1].strftime('%d %b %Y')}"
+            )
+            day_headers = [d.strftime("%a %d") for d in days]
+        else:
+            self.title.setText(days[0].strftime("%B %Y"))
+            day_headers = [d.strftime("%d") for d in days]
+        headers = ["Task"] + day_headers + ["Total"]
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setRowCount(len(report.rows) + 1)
@@ -527,6 +579,9 @@ class MainWindow(QMainWindow):
         self._flash_count = 0
         self._flash_timer = QTimer(self)
         self._flash_timer.timeout.connect(self._flash_step)
+        self.idle_watcher = IdleWatcher()
+        self.tray: QSystemTrayIcon | None = None
+        self.tray_task_actions: dict[str, QAction] = {}
 
         self.setWindowTitle("timeTrackerTool")
         self.resize(440, 560)
@@ -580,6 +635,14 @@ class MainWindow(QMainWindow):
         for task in db.list_tasks(self.conn):
             self._add_row(task["task_id"], task["name"], task["emoji"])
 
+        # Menu-bar / system-tray presence (skipped where no tray exists,
+        # e.g. offscreen test runs)
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray = QSystemTrayIcon(app_icon(), self)
+            self.tray.activated.connect(self._tray_activated)
+            self._rebuild_tray_menu()
+            self.tray.show()
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(TICK_MS)
@@ -598,6 +661,7 @@ class MainWindow(QMainWindow):
         row = TaskRow(task_id, name, self, emoji)
         self.rows[task_id] = row
         self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
+        self._rebuild_tray_menu()
 
     def set_emoji(self, task_id: str, parent: QWidget | None = None) -> None:
         row = self.rows[task_id]
@@ -608,6 +672,7 @@ class MainWindow(QMainWindow):
             row.refresh()
             if self.mini is not None:
                 self.mini.refresh()
+            self._rebuild_tray_menu()
 
     def rename_task(self, task_id: str, old_name: str) -> None:
         name, ok = QInputDialog.getText(self, "Rename task", "New name:", text=old_name)
@@ -615,6 +680,7 @@ class MainWindow(QMainWindow):
             db.rename_task(self.conn, task_id, name)
             self.rows[task_id].name = name.strip()
             self.rows[task_id].refresh()
+            self._rebuild_tray_menu()
 
     def archive_task(self, task_id: str, name: str) -> None:
         confirm = QMessageBox.question(
@@ -630,6 +696,7 @@ class MainWindow(QMainWindow):
         row = self.rows.pop(task_id)
         self.rows_layout.removeWidget(row)
         row.deleteLater()
+        self._rebuild_tray_menu()
 
     # --- timing ----------------------------------------------------------
 
@@ -642,6 +709,7 @@ class MainWindow(QMainWindow):
                 self.rows[tid].refresh()
         if self.mini is not None:
             self.mini.refresh()
+        self._update_tray_state()
         if self.engine.running_task == task_id:
             self.flash_task(task_id)  # green "accepted" pulse on start
 
@@ -658,6 +726,10 @@ class MainWindow(QMainWindow):
         self._tick_count += 1
         if self._tick_count % FLUSH_EVERY_TICKS == 0:
             self.flush_now()
+        if self._tick_count % IDLE_CHECK_EVERY_TICKS == 0:
+            self._check_idle()
+        if self.tray is not None:
+            self._update_tray_state()
         if date.today() != self._today:
             # Midnight rollover: every card's "today" total starts from zero,
             # not just the running one's
@@ -668,6 +740,103 @@ class MainWindow(QMainWindow):
         elif self.engine.running_task in self.rows:
             self.rows[self.engine.running_task].refresh()
         if self.mini is not None and self.mini.isVisible():
+            self.mini.refresh()
+
+    # --- system tray ------------------------------------------------------
+
+    def _rebuild_tray_menu(self) -> None:
+        if self.tray is None:
+            return
+        menu = QMenu()
+        self.tray_task_actions = {}
+        for task_id, row in self.rows.items():
+            label = f"{row.emoji} {row.name}" if row.emoji else row.name
+            action = QAction(label, menu)
+            action.setCheckable(True)
+            action.setChecked(self.engine.running_task == task_id)
+            action.triggered.connect(
+                lambda _checked=False, tid=task_id: self.toggle_task(tid))
+            self.tray_task_actions[task_id] = action
+            menu.addAction(action)
+        if self.rows:
+            menu.addSeparator()
+        open_action = QAction("Open timeTrackerTool", menu)
+        open_action.triggered.connect(self.present)
+        mini_action = QAction("Mini mode", menu)
+        mini_action.triggered.connect(self.enter_mini)
+        quit_action = QAction("Quit", menu)
+        quit_action.triggered.connect(QApplication.instance().quit)
+        menu.addAction(open_action)
+        menu.addAction(mini_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        self.tray.setContextMenu(menu)
+        self._update_tray_state()
+
+    def _update_tray_state(self) -> None:
+        if self.tray is None:
+            return
+        running = self.engine.running_task
+        for task_id, action in self.tray_task_actions.items():
+            action.setChecked(task_id == running)
+        if running and running in self.rows:
+            name = self.rows[running].name
+            self.tray.setToolTip(
+                f"⏱ {name} — {format_hms(self.today_seconds(running))} today")
+        else:
+            self.tray.setToolTip("timeTrackerTool — nothing running")
+
+    def _tray_activated(self, reason) -> None:
+        # Windows: single-click the tray icon to bring the app up.
+        # macOS ignores this (the menu opens instead), which is native behaviour.
+        if reason == QSystemTrayIcon.ActivationReason.Trigger and sys.platform != "darwin":
+            self.present()
+
+    def present(self) -> None:
+        """Bring whichever window is current to the front (also called when a
+        second instance is launched)."""
+        if self.mini is not None and self.mini.isVisible():
+            self.mini.raise_()
+            self.mini.activateWindow()
+        else:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+
+    # --- idle detection ---------------------------------------------------
+
+    def _check_idle(self) -> None:
+        span = self.idle_watcher.sample(
+            datetime.now(), system_idle_seconds(),
+            self.engine.running_task is not None,
+        )
+        if span is not None and self.engine.running_task is not None:
+            self._prompt_idle(self.engine.running_task, span[0], span[1])
+
+    def _prompt_idle(self, task_id: str, away_start: datetime,
+                     away_end: datetime) -> None:
+        minutes = int((away_end - away_start).total_seconds() // 60)
+        name = self.rows[task_id].name if task_id in self.rows else task_id
+        choice = QMessageBox.question(
+            self, "Welcome back",
+            f"You were away for ~{minutes} minutes while '{name}' was running.\n\n"
+            "Keep that time, or discard the away gap?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        # Yes = keep. No = discard the away span from the logged totals.
+        if choice == QMessageBox.StandardButton.No:
+            self.discard_span(task_id, away_start, away_end)
+
+    def discard_span(self, task_id: str, start: datetime, end: datetime) -> None:
+        """Remove an away span from a task's stored totals (timer keeps
+        running — only the gap is dropped)."""
+        self.flush_now()  # make sure the span is on disk before deducting
+        for entry_date, seconds in split_span_by_date(start, end):
+            db.deduct_seconds(self.conn, task_id, entry_date, seconds)
+        for row in self.rows.values():
+            row.refresh()
+        if self.mini is not None:
             self.mini.refresh()
 
     # --- start flash ------------------------------------------------------
@@ -731,6 +900,8 @@ class MainWindow(QMainWindow):
         self._shutdown_done = True
         self.timer.stop()
         self._flash_timer.stop()
+        if self.tray is not None:
+            self.tray.hide()
         self.engine.stop(datetime.now())
         self.flush_now()
         self.conn.close()
@@ -746,7 +917,42 @@ class MainWindow(QMainWindow):
 def main() -> int:
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())  # window icon everywhere; Dock icon on macOS
+
+    # Single-instance guard. QLockFile is the authority — it detects stale
+    # locks from crashed/killed instances by PID, which a bare local socket
+    # cannot. If a live instance holds the lock, poke it to the front
+    # (best-effort) and exit instead of opening a second window on the DB.
+    lock_dir = db.default_db_path().parent
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock = QLockFile(str(lock_dir / "timetracker.lock"))
+    if not lock.tryLock(100):
+        probe = QLocalSocket()
+        probe.connectToServer(INSTANCE_SERVER)
+        if probe.waitForConnected(200):
+            probe.write(b"show")
+            probe.flush()
+            if probe.state() == QLocalSocket.LocalSocketState.ConnectedState:
+                probe.waitForBytesWritten(200)
+            probe.disconnectFromServer()
+        return 0
+    QLocalServer.removeServer(INSTANCE_SERVER)  # clear any stale socket file
+
     window = MainWindow()
+    window._instance_lock = lock  # held for the app's lifetime
+
+    server = QLocalServer()
+    server.listen(INSTANCE_SERVER)
+
+    def _on_second_instance() -> None:
+        while server.hasPendingConnections():
+            connection = server.nextPendingConnection()
+            connection.readAll()
+            connection.disconnectFromServer()
+        window.present()
+
+    server.newConnection.connect(_on_second_instance)
+    window._instance_server = server  # keep it alive for the app's lifetime
+
     # Safety net: flush even when quit arrives without a closeEvent
     # (e.g. Cmd-Q while in mini mode, where the main window is hidden)
     app.aboutToQuit.connect(window.shutdown)

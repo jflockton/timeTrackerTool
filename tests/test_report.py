@@ -3,7 +3,14 @@ from datetime import date
 import pytest
 
 from timetracker import db
-from timetracker.report import build_week_report, render_text, week_dates
+from timetracker.report import (
+    build_month_report,
+    build_week_report,
+    month_dates,
+    render_text,
+    to_csv,
+    week_dates,
+)
 
 
 @pytest.fixture()
@@ -51,6 +58,35 @@ def test_report_omits_zero_tasks_but_keeps_archived_history(conn):
     report = build_week_report(conn, date(2026, 7, 21))
     assert [r.task_name for r in report.rows] == ["OldWork"]
     assert active not in [r.task_id for r in report.rows]
+
+
+def test_month_dates_and_report(conn):
+    assert len(month_dates(date(2026, 7, 15))) == 31
+    assert month_dates(date(2026, 2, 1))[-1] == date(2026, 2, 28)  # not a leap year
+
+    task = db.create_task(conn, "Alpha")
+    db.add_seconds(conn, task, "2026-07-01", 100)
+    db.add_seconds(conn, task, "2026-07-31", 200)
+    db.add_seconds(conn, task, "2026-08-01", 999)  # next month — excluded
+
+    report = build_month_report(conn, date(2026, 7, 20))
+    assert len(report.dates) == 31
+    assert report.rows[0].daily_seconds[0] == 100
+    assert report.rows[0].daily_seconds[30] == 200
+    assert report.grand_total == 300
+    assert len(report.day_totals) == 31
+
+
+def test_to_csv_round_numbers_and_totals(conn):
+    task = db.create_task(conn, "Alpha")
+    db.add_seconds(conn, task, "2026-07-20", 3600.4)
+    text = to_csv(build_week_report(conn, date(2026, 7, 20)))
+    lines = text.strip().splitlines()
+    assert lines[0].startswith("Task,2026-07-20,")
+    assert lines[0].endswith(",Total")
+    assert "Alpha,3600," in lines[1]
+    assert lines[2].startswith("TOTAL,3600,")
+    assert "(values are seconds)" in lines[-1]
 
 
 def test_render_text_contains_totals(conn):

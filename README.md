@@ -10,7 +10,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-32%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
@@ -59,6 +59,23 @@ judgmental.
   to the new day live. Night owls are people too.
 - 🚪 **Quit-safe** — pending time is banked on close *and* on app quit, even
   when quitting from mini mode where the main window is hidden.
+- 💤 **Idle detection** — leave for 5+ minutes with a timer running and when
+  you return the app asks whether to keep or discard the away gap. Uses the
+  OS idle counters directly (no extra dependencies), split correctly across
+  midnight if you vanish for that long.
+- 📍 **Menu-bar / tray icon** — start/stop any task, open the app, jump to
+  mini mode, or quit, all from the macOS menu bar or Windows system tray.
+  The tooltip shows what's running and today's total.
+- 🔒 **Single-instance** — launching a second copy just brings the running
+  one to the front instead of opening two windows on the same database.
+  Crash-safe: a stale lock from a killed instance is detected and cleared.
+- 📤 **CSV export + monthly view** — the report dialog toggles between week
+  and month, pages through either, and exports the current view as CSV
+  (ISO-dated columns, seconds, ready for a spreadsheet).
+- 🔀 **Cross-machine merge** — every time entry records which machine wrote
+  it, so `poetry run timetracker-merge <other.db>` combines your Mac and
+  Windows histories with no double-counting, no matter how often you re-run
+  it. Reports sum across machines automatically.
 - 🪪 **Stable generated IDs** — each task gets an 8-character ID at creation;
   all logged time hangs off the ID, so renaming a task never orphans its
   history.
@@ -84,9 +101,10 @@ judgmental.
 | **RAM** | 4 GB is plenty |
 | **Network** | Only needed during install — the app itself is fully offline |
 
-> 📦 There is no double-clickable installer *yet* (it's on the roadmap), so
-> installation currently means setting up the small Python toolchain below.
-> One-time job, ~10 minutes from a bare machine.
+> 📦 You can build a **double-clickable app** (macOS `.app` / Windows `.exe`)
+> with one command — see *Packaging* below. The Python toolchain is needed
+> once, to run that build (or to run from source). ~10 minutes from a bare
+> machine.
 
 ## 🚀 Quick start (already have Python + Poetry)
 
@@ -149,6 +167,37 @@ hi-score table is watching.
    poetry run timetracker
    ```
 
+## 📦 Packaging — build the double-clickable app
+
+On the machine you're building **for** (PyInstaller doesn't cross-compile):
+
+```bash
+poetry install                            # includes the build tooling
+poetry run python scripts/build_app.py
+```
+
+- **macOS** → `dist/timeTrackerTool.app` with a proper `.icns` (Dock,
+  Cmd-Tab, Finder — the icon shows everywhere). Drag it into /Applications.
+- **Windows** → `dist/timeTrackerTool/timeTrackerTool.exe` with the `.ico`
+  embedded (Explorer, taskbar, shortcuts). Pin it wherever you like.
+
+The packaged app is self-contained — the target machine doesn't need Python
+at all. It uses the same data file as running from source, so you can switch
+between the two freely.
+
+## 🔀 Two machines? Merging your history
+
+Each machine tracks into its own local file, stamped with the machine's name.
+To combine them (e.g. pull the Windows history into the Mac):
+
+```bash
+# copy the other machine's timetracker.db over (USB, Dropbox, scp…) then:
+poetry run timetracker-merge /path/to/other/timetracker.db
+```
+
+Safe to re-run any time — entries are keyed per machine, so nothing is ever
+double-counted. Reports automatically sum across machines.
+
 ## 🔄 Updating
 
 ```bash
@@ -209,11 +258,13 @@ tests with deterministic Qt teardown (ask us about the segfault sometime).
 
 ## 🗺️ Roadmap (in no particular order, like recruits on parade)
 
-- [ ] 📦 Package as a double-clickable app (PyInstaller/briefcase) with a
-      proper `.icns`/`.ico` from the code-drawn icon
-- [ ] 🪟 Test on Windows
-- [ ] 📤 CSV export of the weekly report
-- [ ] 💤 Idle detection (the app notices you've wandered off)
+- [x] 📦 Package as a double-clickable app with a proper `.icns`/`.ico`
+- [x] 📤 CSV export + monthly view
+- [x] 💤 Idle detection
+- [x] 🔒 Single-instance guard
+- [x] 📍 Menu-bar / tray presence
+- [x] 🔀 Cross-machine merge tool
+- [ ] 🪟 Test on Windows (build the .exe there and give it a real day)
 - [ ] 👾 Animate the banner invaders (they *should* bounce, let's be honest)
 
 ## ❓ FAQ
@@ -230,6 +281,15 @@ Beat a full working day of tracked time and you may update it.
 
 **Can I have many, many, many tasks?**
 Yes. Many, many, many. The list scrolls.
+
+**I track on two machines — do I get one timesheet?**
+Yes: copy one machine's data file to the other and run
+`timetracker-merge` (see *Two machines?* above). Entries are stamped per
+machine, so merging is repeat-safe.
+
+**What happens if I wander off with a timer running?**
+After 5 idle minutes, the app notices. When you come back it asks whether
+the away time was real work (thinking counts!) or should be discarded.
 
 ---
 
