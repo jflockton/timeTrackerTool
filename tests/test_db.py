@@ -69,6 +69,30 @@ def test_entries_between_is_inclusive(conn):
     assert entries == {(task_id, "2026-07-20"): 2, (task_id, "2026-07-26"): 3}
 
 
+def test_unarchive_restores_to_default_listing(conn):
+    task_id = db.create_task(conn, "Task")
+    db.archive_task(conn, task_id)
+    assert db.list_tasks(conn) == []
+    db.unarchive_task(conn, task_id)
+    assert [t["task_id"] for t in db.list_tasks(conn)] == [task_id]
+
+
+def test_delete_task_removes_task_and_all_time(conn):
+    keep = db.create_task(conn, "Keep")
+    doomed = db.create_task(conn, "Doomed")
+    db.add_seconds(conn, keep, "2026-07-20", 100)
+    db.add_seconds(conn, doomed, "2026-07-20", 200)
+    db.add_seconds(conn, doomed, "2026-07-21", 300)
+    assert db.total_seconds(conn, doomed) == 500
+
+    db.delete_task(conn, doomed)
+    assert [t["task_id"] for t in db.list_tasks(conn, include_archived=True)] == [keep]
+    assert db.total_seconds(conn, doomed) == 0
+    assert db.entries_between(conn, "2026-07-20", "2026-07-21") == {
+        (keep, "2026-07-20"): 100
+    }
+
+
 def test_emoji_column_migrates_old_databases_and_updates():
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row

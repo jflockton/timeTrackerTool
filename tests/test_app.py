@@ -19,6 +19,7 @@ from timetracker import db  # noqa: E402
 from timetracker.app import (  # noqa: E402
     DEFAULT_EMOJI,
     EMOJI_CHOICES,
+    ArchivedTasksDialog,
     EmojiPickerDialog,
     MainWindow,
     app_icon,
@@ -133,6 +134,34 @@ def test_mini_mode_swaps_windows_and_stays_on_top(make_window, tmp_path):
 
     window.exit_mini()
     assert window.isVisible() and not mini.isVisible()
+
+
+def test_archived_dialog_restore_and_delete(make_window, tmp_path):
+    db_path = tmp_path / "arch.db"
+    seed = db.connect(db_path)
+    a = db.create_task(seed, "Alpha")
+    b = db.create_task(seed, "Beta")
+    db.add_seconds(seed, a, "2026-07-20", 100)
+    db.add_seconds(seed, b, "2026-07-20", 200)
+    db.archive_task(seed, a)
+    db.archive_task(seed, b)
+    seed.close()
+
+    window = make_window(db_path)
+    assert window.rows == {}  # both archived, so no cards
+    dialog = ArchivedTasksDialog(window)
+    assert {t["task_id"] for t in dialog._archived()} == {a, b}
+
+    dialog.restore_task(a)
+    assert a in window.rows  # card is back in the main window
+    assert {t["task_id"] for t in dialog._archived()} == {b}
+
+    dialog.delete_task(b, skip_confirm=True)
+    assert dialog._archived() == []
+    all_ids = [t["task_id"] for t in db.list_tasks(window.conn, include_archived=True)]
+    assert all_ids == [a]
+    assert db.total_seconds(window.conn, b) == 0  # logged time gone too
+    dialog.deleteLater()
 
 
 def test_emoji_picker_grid_fills_the_field(qapp):

@@ -357,6 +357,94 @@ class MiniWindow(QWidget):
         super().closeEvent(event)
 
 
+class ArchivedTasksDialog(QDialog):
+    """Manage archived tasks: restore them, or delete them forever
+    (task + all logged time, behind a confirmation)."""
+
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__(window)
+        self.window = window
+        self.setWindowTitle("Archived tasks")
+        self.resize(460, 320)
+
+        self.list_layout = QVBoxLayout()
+        self.list_layout.setSpacing(6)
+        self.list_layout.addStretch()
+        host = QWidget()
+        host.setLayout(self.list_layout)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(host)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Archived tasks keep their history and still "
+                                "appear in weekly reports until deleted."))
+        layout.addWidget(scroll, stretch=1)
+        layout.addWidget(buttons)
+        self.refresh_list()
+
+    def _archived(self) -> list:
+        return [t for t in db.list_tasks(self.window.conn, include_archived=True)
+                if t["archived"]]
+
+    def refresh_list(self) -> None:
+        while self.list_layout.count() > 1:  # keep the trailing stretch
+            item = self.list_layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        archived = self._archived()
+        if not archived:
+            self.list_layout.insertWidget(0, QLabel("Nothing archived."))
+            return
+        for task in archived:
+            row = QWidget()
+            box = QHBoxLayout(row)
+            box.setContentsMargins(4, 2, 4, 2)
+            title = f"{task['emoji']} {task['name']}" if task["emoji"] else task["name"]
+            total = db.total_seconds(self.window.conn, task["task_id"])
+            box.addWidget(QLabel(f"{title} — {format_hms(total)} logged"), stretch=1)
+            restore = QPushButton("Restore")
+            restore.clicked.connect(
+                lambda _c=False, tid=task["task_id"]: self.restore_task(tid))
+            delete = QPushButton("Delete forever")
+            delete.clicked.connect(
+                lambda _c=False, tid=task["task_id"]: self.delete_task(tid))
+            box.addWidget(restore)
+            box.addWidget(delete)
+            self.list_layout.insertWidget(self.list_layout.count() - 1, row)
+
+    def restore_task(self, task_id: str) -> None:
+        task = self.window.conn.execute(
+            "SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        db.unarchive_task(self.window.conn, task_id)
+        self.window._add_row(task["task_id"], task["name"], task["emoji"])
+        if self.window.mini is not None:
+            self.window.mini.rebuild()
+            self.window.mini.refresh()
+        self.refresh_list()
+
+    def delete_task(self, task_id: str, skip_confirm: bool = False) -> None:
+        task = self.window.conn.execute(
+            "SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        total = db.total_seconds(self.window.conn, task_id)
+        if not skip_confirm:
+            confirm = QMessageBox.warning(
+                self, "Delete forever",
+                f"Permanently delete '{task['name']}' and its "
+                f"{format_hms(total)} of logged time?\n\n"
+                "It will disappear from all weekly reports. This cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+        db.delete_task(self.window.conn, task_id)
+        self.refresh_list()
+
+
 class WeekReportDialog(QDialog):
     """Day-by-day table for one Monday–Sunday week, with prev/next paging."""
 
@@ -469,13 +557,19 @@ class MainWindow(QMainWindow):
 
         report_btn = QPushButton("Weekly report")
         report_btn.clicked.connect(self.show_report)
+        archived_btn = QPushButton("Archived…")
+        archived_btn.setToolTip("Restore or permanently delete archived tasks")
+        archived_btn.clicked.connect(lambda: ArchivedTasksDialog(self).exec())
+        bottom = QHBoxLayout()
+        bottom.addWidget(report_btn, stretch=1)
+        bottom.addWidget(archived_btn)
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addWidget(self.banner)
         layout.addLayout(top)
         layout.addWidget(scroll, stretch=1)
-        layout.addWidget(report_btn)
+        layout.addLayout(bottom)
         self.setCentralWidget(central)
 
         for task in db.list_tasks(self.conn):

@@ -107,6 +107,26 @@ def archive_task(conn: sqlite3.Connection, task_id: str) -> None:
     conn.commit()
 
 
+def unarchive_task(conn: sqlite3.Connection, task_id: str) -> None:
+    conn.execute("UPDATE tasks SET archived = 0 WHERE task_id = ?", (task_id,))
+    conn.commit()
+
+
+def delete_task(conn: sqlite3.Connection, task_id: str) -> None:
+    """Permanently remove a task AND all its logged time. No undo."""
+    conn.execute("DELETE FROM time_entries WHERE task_id = ?", (task_id,))
+    conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+    conn.commit()
+
+
+def total_seconds(conn: sqlite3.Connection, task_id: str) -> float:
+    row = conn.execute(
+        "SELECT COALESCE(SUM(seconds), 0) AS s FROM time_entries WHERE task_id = ?",
+        (task_id,),
+    ).fetchone()
+    return float(row["s"])
+
+
 def add_seconds(conn: sqlite3.Connection, task_id: str, entry_date: str, seconds: float) -> None:
     """Add seconds to a task's cumulative total for a date (upsert)."""
     if seconds <= 0:
