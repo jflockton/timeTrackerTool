@@ -1,0 +1,21 @@
+[project]
+name = "timetracker"
+version = "0.1.0"
+description = "Cross-platform per-task timer buttons with daily totals and a weekly breakdown"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "PySide6 (>=6.6,<7.0)",
+]
+
+[project.scripts]
+timetracker = "timetracker.app:main"
+
+[tool.poetry]
+packages = [{ include = "timetracker", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
