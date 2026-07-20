@@ -58,6 +58,11 @@ def ensure_timetracker_tables(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    # Migration for databases created before mini-mode existed
+    columns = {row["name"] if isinstance(row, sqlite3.Row) else row[1]
+               for row in conn.execute("PRAGMA table_info(tasks)")}
+    if "emoji" not in columns:
+        conn.execute("ALTER TABLE tasks ADD COLUMN emoji TEXT NOT NULL DEFAULT ''")
     conn.commit()
 
 
@@ -89,6 +94,11 @@ def list_tasks(conn: sqlite3.Connection, include_archived: bool = False) -> list
 
 def rename_task(conn: sqlite3.Connection, task_id: str, new_name: str) -> None:
     conn.execute("UPDATE tasks SET name = ? WHERE task_id = ?", (new_name.strip(), task_id))
+    conn.commit()
+
+
+def set_task_emoji(conn: sqlite3.Connection, task_id: str, emoji: str) -> None:
+    conn.execute("UPDATE tasks SET emoji = ? WHERE task_id = ?", (emoji.strip(), task_id))
     conn.commit()
 
 

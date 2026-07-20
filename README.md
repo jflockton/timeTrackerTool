@@ -35,6 +35,13 @@ judgmental.
 
 - 🕹️ **One button per task** — configure as many tasks as you like; each gets
   a Start/Stop toggle in its own bordered card.
+- 🐭 **Mini mode** — one click shrinks the app to a tiny always-on-top,
+  resizable strip of emoji buttons (pick each task's emoji via right-click).
+  The emoji scale with the window; make it big enough and each button also
+  shows the task name and today's tracked time.
+
+  <img src="docs/mini_small.png" alt="Mini mode, compact: emoji only" height="72">
+  <img src="docs/mini_large.png" alt="Mini mode, enlarged: emoji plus task name and time" height="150">
 - ⏱️ **Cumulative daily timers** — every click adds to *today's* total for
   that task, displayed live to the second.
 - 🎯 **Single-active tracking** — starting a task stops the running one. No

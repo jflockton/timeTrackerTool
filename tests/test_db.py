@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from timetracker import db
@@ -65,6 +67,22 @@ def test_entries_between_is_inclusive(conn):
         db.add_seconds(conn, task_id, day, secs)
     entries = db.entries_between(conn, "2026-07-20", "2026-07-26")
     assert entries == {(task_id, "2026-07-20"): 2, (task_id, "2026-07-26"): 3}
+
+
+def test_emoji_column_migrates_old_databases_and_updates():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    # A pre-mini-mode schema without the emoji column
+    connection.execute(
+        "CREATE TABLE tasks (task_id TEXT PRIMARY KEY, name TEXT NOT NULL,"
+        " created_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0)"
+    )
+    db.ensure_timetracker_tables(connection)
+    task_id = db.create_task(connection, "Task")
+    assert db.list_tasks(connection)[0]["emoji"] == ""
+    db.set_task_emoji(connection, task_id, "🔥")
+    assert db.list_tasks(connection)[0]["emoji"] == "🔥"
+    connection.close()
 
 
 def test_default_db_path_env_override(monkeypatch, tmp_path):
