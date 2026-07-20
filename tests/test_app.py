@@ -16,7 +16,13 @@ from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from timetracker import db  # noqa: E402
-from timetracker.app import DEFAULT_EMOJI, MainWindow, app_icon  # noqa: E402
+from timetracker.app import (  # noqa: E402
+    DEFAULT_EMOJI,
+    EMOJI_CHOICES,
+    EmojiPickerDialog,
+    MainWindow,
+    app_icon,
+)
 
 
 @pytest.fixture(scope="module")
@@ -127,6 +133,17 @@ def test_mini_mode_swaps_windows_and_stays_on_top(make_window, tmp_path):
 
     window.exit_mini()
     assert window.isVisible() and not mini.isVisible()
+
+
+def test_emoji_picker_grid_fills_the_field(qapp):
+    dialog = EmojiPickerDialog(None, "Alpha", "")
+    assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)
+    dialog.grid_buttons[1].click()
+    assert dialog.edit.text() == EMOJI_CHOICES[1]
+    dialog.grid_buttons[5].click()  # picking again replaces, not appends
+    assert dialog.edit.text() == EMOJI_CHOICES[5]
+    dialog.deleteLater()
+    qapp.processEvents()
 
 
 def test_mini_button_description_appears_with_size(make_window, tmp_path):

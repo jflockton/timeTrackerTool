@@ -16,7 +16,9 @@ from PySide6.QtGui import QFontMetrics, QIcon, QPainter, QPen, QColor, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QDialogButtonBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -45,6 +47,14 @@ DEFAULT_EMOJI = "⏱️"
 # Green "accepted" flash when a timer starts: pulse count and speed
 FLASH_PULSES = 6
 FLASH_INTERVAL_MS = 90
+
+# Quick-pick emoji for the Set emoji dialog (any emoji can still be typed)
+EMOJI_CHOICES = [
+    "⏱️", "🔥", "🛡️", "🌐", "🔧", "💻", "🖥️", "📞",
+    "📧", "📝", "📊", "📚", "🧠", "🔐", "🔑", "🚨",
+    "🧪", "⚙️", "🐍", "📦", "🏗️", "📅", "🗺️", "🤝",
+    "☕", "🍔", "🏃", "💤", "🎮", "🎲", "👾", "🚂",
+]
 
 
 def app_icon() -> QIcon:
@@ -149,6 +159,58 @@ class TaskRow(QFrame):
             self.style().polish(self)
 
 
+class EmojiPickerDialog(QDialog):
+    """Pick a task emoji: click one from the grid, or type/paste anything.
+    The OS emoji palette works in the text field too (see the hint)."""
+
+    def __init__(self, parent: QWidget | None, task_name: str, current: str) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Set emoji")
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f"Emoji for '{task_name}' (shown on its mini-mode button):"))
+
+        self.edit = QLineEdit(current)
+        self.edit.setPlaceholderText("…or type/paste any emoji here")
+
+        self.grid_buttons: list[QPushButton] = []
+        grid = QGridLayout()
+        grid.setSpacing(2)
+        for i, emoji in enumerate(EMOJI_CHOICES):
+            button = QPushButton(emoji)
+            button.setFlat(True)
+            button.setFixedSize(38, 38)
+            font = button.font()
+            font.setPointSize(18)
+            button.setFont(font)
+            button.setToolTip("Click to choose")
+            button.clicked.connect(lambda _checked=False, e=emoji: self.edit.setText(e))
+            self.grid_buttons.append(button)
+            grid.addWidget(button, i // 8, i % 8)
+        layout.addLayout(grid)
+        layout.addWidget(self.edit)
+
+        if sys.platform == "darwin":
+            hint = "Tip: press ⌃⌘Space in the box above for the full macOS emoji picker."
+        else:
+            hint = "Tip: press Win+. in the box above for the full Windows emoji picker."
+        hint_label = QLabel(hint)
+        hint_label.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
+        layout.addWidget(hint_label)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def get_emoji(parent: QWidget | None, task_name: str, current: str) -> tuple[str, bool]:
+        dialog = EmojiPickerDialog(parent, task_name, current)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        return dialog.edit.text(), accepted
+
+
 class MiniTaskButton(QPushButton):
     """Mini-mode button: a configurable emoji that scales with the button,
     plus the task name and today's time once the button is tall enough."""
@@ -208,8 +270,9 @@ class MiniTaskButton(QPushButton):
             p.setBrush(QColor(148, 163, 184, 28))
         p.drawRoundedRect(rect, 10, 10)
 
-        show_desc = self.shows_description()
-        text_zone = 34 if show_desc else 0
+        # The name label is always shown; the time joins it once there's room
+        show_time = self.shows_description()
+        text_zone = 30 if show_time else 15
         emoji_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height() - text_zone)
         emoji_font = self.font()
         emoji_font.setPixelSize(
@@ -218,22 +281,27 @@ class MiniTaskButton(QPushButton):
         p.setFont(emoji_font)
         p.drawText(emoji_rect, Qt.AlignmentFlag.AlignCenter, self.emoji())
 
-        if show_desc:
-            small = self.font()
-            small.setPixelSize(11)
-            p.setFont(small)
-            p.setPen(self.palette().windowText().color())
-            metrics = QFontMetrics(small)
-            elided = metrics.elidedText(
-                name, Qt.TextElideMode.ElideRight, int(rect.width()) - 10
-            )
+        small = self.font()
+        small.setPixelSize(10)
+        p.setFont(small)
+        p.setPen(self.palette().windowText().color())
+        metrics = QFontMetrics(small)
+        elided = metrics.elidedText(
+            name, Qt.TextElideMode.ElideRight, int(rect.width()) - 10
+        )
+        if show_time:
             p.drawText(
-                QRectF(rect.x(), rect.bottom() - 32, rect.width(), 15),
+                QRectF(rect.x(), rect.bottom() - 30, rect.width(), 14),
                 Qt.AlignmentFlag.AlignCenter, elided,
             )
             p.drawText(
-                QRectF(rect.x(), rect.bottom() - 17, rect.width(), 15),
+                QRectF(rect.x(), rect.bottom() - 16, rect.width(), 14),
                 Qt.AlignmentFlag.AlignCenter, today,
+            )
+        else:
+            p.drawText(
+                QRectF(rect.x(), rect.bottom() - 16, rect.width(), 14),
+                Qt.AlignmentFlag.AlignCenter, elided,
             )
         p.end()
 
@@ -434,11 +502,7 @@ class MainWindow(QMainWindow):
 
     def set_emoji(self, task_id: str, parent: QWidget | None = None) -> None:
         row = self.rows[task_id]
-        text, ok = QInputDialog.getText(
-            parent or self, "Set emoji",
-            f"Emoji for '{row.name}' (shown on its mini-mode button):",
-            text=row.emoji,
-        )
+        text, ok = EmojiPickerDialog.get_emoji(parent or self, row.name, row.emoji)
         if ok:
             row.emoji = text.strip()
             db.set_task_emoji(self.conn, task_id, row.emoji)
