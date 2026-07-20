@@ -41,7 +41,7 @@ FLUSH_EVERY_TICKS = 10
 
 
 def app_icon() -> QIcon:
-    """The bundled stopwatch icon (regenerate with scripts/make_assets.py)."""
+    """The bundled 13:37 LCD-clock icon (regenerate with scripts/make_assets.py)."""
     return QIcon(str(files("timetracker") / "assets" / "icon.png"))
 
 

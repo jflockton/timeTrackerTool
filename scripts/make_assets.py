@@ -32,56 +32,108 @@ from PySide6.QtGui import (
 ASSETS = Path(__file__).resolve().parents[1] / "src" / "timetracker" / "assets"
 
 
+# Seven-segment display: which segments light up per digit.
+# Segments: A top, B top-right, C bottom-right, D bottom, E bottom-left,
+# F top-left, G middle.
+SEGMENTS = {
+    "0": "ABCDEF", "1": "BC", "2": "ABGED", "3": "ABGCD", "4": "FGBC",
+    "5": "AFGCD", "6": "AFGECD", "7": "ABC", "8": "ABCDEFG", "9": "ABFGCD",
+}
+
+
+def _seg_h(cx: float, cy: float, length: float, t: float) -> QPolygonF:
+    return QPolygonF([
+        QPointF(cx - length / 2, cy), QPointF(cx - length / 2 + t / 2, cy - t / 2),
+        QPointF(cx + length / 2 - t / 2, cy - t / 2), QPointF(cx + length / 2, cy),
+        QPointF(cx + length / 2 - t / 2, cy + t / 2), QPointF(cx - length / 2 + t / 2, cy + t / 2),
+    ])
+
+
+def _seg_v(cx: float, cy: float, length: float, t: float) -> QPolygonF:
+    return QPolygonF([
+        QPointF(cx, cy - length / 2), QPointF(cx + t / 2, cy - length / 2 + t / 2),
+        QPointF(cx + t / 2, cy + length / 2 - t / 2), QPointF(cx, cy + length / 2),
+        QPointF(cx - t / 2, cy + length / 2 - t / 2), QPointF(cx - t / 2, cy - length / 2 + t / 2),
+    ])
+
+
+def _draw_digit(p: QPainter, digit: str, x: float, y: float,
+                w: float, h: float, t: float, on: QColor, off: QColor) -> None:
+    gap = t * 0.18
+    lv = h / 2 - t
+    polys = {
+        "A": _seg_h(x + w / 2, y + t / 2, w - t, t),
+        "G": _seg_h(x + w / 2, y + h / 2, w - t, t),
+        "D": _seg_h(x + w / 2, y + h - t / 2, w - t, t),
+        "F": _seg_v(x + t / 2, y + h / 4 + gap, lv, t),
+        "B": _seg_v(x + w - t / 2, y + h / 4 + gap, lv, t),
+        "E": _seg_v(x + t / 2, y + 3 * h / 4 - gap, lv, t),
+        "C": _seg_v(x + w - t / 2, y + 3 * h / 4 - gap, lv, t),
+    }
+    lit = SEGMENTS[digit]
+    for name, poly in polys.items():
+        if name in lit:
+            p.setPen(QPen(QColor(on.red(), on.green(), on.blue(), 70), t * 0.45))
+            p.setBrush(on)  # translucent fat pen = LED glow halo
+        else:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(off)
+        p.drawPolygon(poly)
+
+
 def make_icon() -> None:
+    """A nerdy LCD clock reading 13:37 (leet o'clock) on a dark tile."""
     size = 1024
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     p = QPainter(pixmap)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    gradient = QLinearGradient(0, 0, 0, size)
-    gradient.setColorAt(0.0, QColor("#3b82f6"))
-    gradient.setColorAt(1.0, QColor("#1e3a8a"))
-    p.setBrush(QBrush(gradient))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.drawRoundedRect(QRectF(64, 64, size - 128, size - 128), 200, 200)
+    tile = QPainterPath()
+    tile.addRoundedRect(QRectF(64, 64, size - 128, size - 128), 200, 200)
+    p.setClipPath(tile)
 
-    cx, cy, radius = size / 2, size / 2 + 40, 300.0
+    bg = QLinearGradient(0, 0, 0, size)
+    bg.setColorAt(0.0, QColor("#10141b"))
+    bg.setColorAt(1.0, QColor("#070b08"))
+    p.fillPath(tile, QBrush(bg))
 
-    p.setBrush(QColor("white"))
-    p.drawRoundedRect(QRectF(cx - 52, cy - radius - 120, 104, 110), 30, 30)
-    for angle_deg in (-45, 45):
-        rad = math.radians(angle_deg - 90)
-        lx = cx + (radius + 40) * math.cos(rad)
-        ly = cy + (radius + 40) * math.sin(rad)
-        p.save()
-        p.translate(lx, ly)
-        p.rotate(angle_deg)
-        p.drawRoundedRect(QRectF(-38, -50, 76, 70), 22, 22)
-        p.restore()
+    # Recessed LCD screen window
+    screen = QRectF(120, 300, size - 240, 424)
+    p.setPen(QPen(QColor("#1f2a22"), 14))
+    p.setBrush(QColor("#060a07"))
+    p.drawRoundedRect(screen, 60, 60)
 
-    p.drawEllipse(QPointF(cx, cy), radius, radius)
-    p.setBrush(QColor("#eff6ff"))
-    p.drawEllipse(QPointF(cx, cy), radius - 56, radius - 56)
+    on = QColor("#39ff5a")
+    off = QColor(57, 255, 90, 26)
 
-    p.setPen(QPen(QColor("#1e3a8a"), 26, c=Qt.PenCapStyle.RoundCap))
-    for i in range(4):
-        rad = math.radians(i * 90 - 90)
-        inner, outer = radius - 130, radius - 84
-        p.drawLine(
-            QPointF(cx + inner * math.cos(rad), cy + inner * math.sin(rad)),
-            QPointF(cx + outer * math.cos(rad), cy + outer * math.sin(rad)),
-        )
+    # 13:37 — slight italic shear like a real LCD
+    digit_w, digit_h, thick, gap = 138, 330, 36, 30
+    colon_w = 54
+    total = 4 * digit_w + 3 * gap + colon_w + gap
+    p.save()
+    p.translate((size - total) / 2 + 20, (size - digit_h) / 2 + 60)
+    p.shear(-0.08, 0)
+    x = 0.0
+    for ch in "13:37":
+        if ch == ":":
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(on)
+            for cy in (digit_h * 0.30, digit_h * 0.70):
+                p.drawRoundedRect(QRectF(x, cy - colon_w / 2 + 10, colon_w * 0.8, colon_w * 0.8), 10, 10)
+            x += colon_w + gap
+        else:
+            _draw_digit(p, ch, x, 0, digit_w, digit_h, thick, on, off)
+            x += digit_w + gap
+    p.restore()
 
-    hand_rad = math.radians(-60)
-    p.setPen(QPen(QColor("#f97316"), 44, c=Qt.PenCapStyle.RoundCap))
-    p.drawLine(
-        QPointF(cx, cy),
-        QPointF(cx + (radius - 140) * math.cos(hand_rad), cy + (radius - 140) * math.sin(hand_rad)),
-    )
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor("#1e3a8a"))
-    p.drawEllipse(QPointF(cx, cy), 40, 40)
+    # Label above the screen, like a proper gadget
+    label = _pixel_text("TIME TRACKER", QColor("#39ff5a"), 10, 5)
+    p.drawPixmap(int((size - label.width()) / 2), 170, label)
+
+    # Faint CRT scanlines across the tile
+    for y in range(64, size - 64, 16):
+        p.fillRect(QRectF(64, y, size - 128, 5), QColor(0, 0, 0, 60))
 
     p.end()
     pixmap.save(str(ASSETS / "icon.png"), "PNG")
@@ -138,7 +190,8 @@ def _draw_sprite(p: QPainter, grid: list[str], x: float, y: float,
 def _pixel_text(text: str, color: QColor, pixel_size: int, scale: int) -> QPixmap:
     """Render text small without antialiasing, then nearest-neighbour upscale
     for a chunky arcade-bitmap look."""
-    font = QFont("Menlo")
+    font = QFont()
+    font.setFamilies(["Menlo", "Consolas", "Courier New"])  # macOS, Windows fallbacks
     font.setBold(True)
     font.setPixelSize(pixel_size)
     font.setStyleStrategy(QFont.StyleStrategy.NoAntialias)
