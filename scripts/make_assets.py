@@ -143,35 +143,13 @@ def make_icon() -> None:
         str(ASSETS / "icon.ico"), "ICO")
 
 
-# Pixel-art sprites, invader-style ('X' = filled cell)
-CRAB = [
-    "..X.....X..",
-    "...X...X...",
-    "..XXXXXXX..",
-    ".XX.XXX.XX.",
-    "XXXXXXXXXXX",
-    "X.XXXXXXX.X",
-    "X.X.....X.X",
-    "...XX.XX...",
-]
-SQUID = [
-    "...XX...",
-    "..XXXX..",
-    ".XXXXXX.",
-    "XX.XX.XX",
-    "XXXXXXXX",
-    "..X..X..",
-    ".X.XX.X.",
-    "X.X..X.X",
-]
-CANNON = [
-    "....X....",
-    "...XXX...",
-    "...XXX...",
-    ".XXXXXXX.",
-    "XXXXXXXXX",
-    "XXXXXXXXX",
-]
+from timetracker.sprites import (  # noqa: E402 (path set by poetry env)
+    CANNON,
+    CRAB,
+    SQUID,
+    draw_sprite,
+    pixel_text,
+)
 
 STARS = [
     (45, 120), (120, 210), (210, 20), (300, 250), (330, 90), (420, 30),
@@ -181,39 +159,8 @@ STARS = [
 ]
 
 
-def _draw_sprite(p: QPainter, grid: list[str], x: float, y: float,
-                 px: float, color: QColor) -> None:
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(color)
-    for row, line in enumerate(grid):
-        for col, cell in enumerate(line):
-            if cell == "X":
-                p.drawRect(QRectF(x + col * px, y + row * px, px, px))
-
-
-def _pixel_text(text: str, color: QColor, pixel_size: int, scale: int) -> QPixmap:
-    """Render text small without antialiasing, then nearest-neighbour upscale
-    for a chunky arcade-bitmap look."""
-    font = QFont()
-    font.setFamilies(["Menlo", "Consolas", "Courier New"])  # macOS, Windows fallbacks
-    font.setBold(True)
-    font.setPixelSize(pixel_size)
-    font.setStyleStrategy(QFont.StyleStrategy.NoAntialias)
-    from PySide6.QtGui import QFontMetrics
-
-    metrics = QFontMetrics(font)
-    small = QPixmap(metrics.horizontalAdvance(text) + 2, metrics.height() + 2)
-    small.fill(Qt.GlobalColor.transparent)
-    sp = QPainter(small)
-    sp.setFont(font)
-    sp.setPen(color)
-    sp.drawText(1, metrics.ascent() + 1, text)
-    sp.end()
-    return small.scaled(
-        small.width() * scale, small.height() * scale,
-        Qt.AspectRatioMode.IgnoreAspectRatio,
-        Qt.TransformationMode.FastTransformation,
-    )
+_draw_sprite = draw_sprite
+_pixel_text = pixel_text
 
 
 def make_banner() -> None:

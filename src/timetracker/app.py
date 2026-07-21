@@ -14,7 +14,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from PySide6.QtCore import QLockFile, QRectF, Qt, QTimer
-from PySide6.QtGui import QAction, QFontMetrics, QIcon, QPainter, QPen, QColor, QPixmap
+from PySide6.QtGui import QAction, QFontMetrics, QIcon, QPainter, QPen, QColor
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import autostart, db, sync
+from .banner import BannerWidget
 from .core import TimerEngine, format_hms, split_span_by_date
 from .idle import IDLE_THRESHOLD_S, IdleWatcher, system_idle_seconds
 from .report import (
@@ -96,11 +97,6 @@ EMOJI_CHOICES = [
 def app_icon() -> QIcon:
     """The bundled 13:37 LCD-clock icon (regenerate with scripts/make_assets.py)."""
     return QIcon(str(files("timetracker") / "assets" / "icon.png"))
-
-
-def banner_pixmap() -> QPixmap:
-    """The 80's arcade title-screen banner (regenerate with scripts/make_assets.py)."""
-    return QPixmap(str(files("timetracker") / "assets" / "banner.png"))
 
 
 # Card styling for task rows; [running="true"] lights the active task up.
@@ -754,11 +750,9 @@ class MainWindow(QMainWindow):
         self.resize(440, 560)
         self.setStyleSheet(STYLESHEET)
 
-        self.banner = QLabel()
-        self.banner.setPixmap(
-            banner_pixmap().scaledToWidth(408, Qt.TransformationMode.SmoothTransformation)
-        )
-        self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Live arcade banner: marching invaders, blinking prompt, and a
+        # saucer strafing run at random intervals. 1UP shows real time.
+        self.banner = BannerWidget()
 
         self.new_task_edit = QLineEdit()
         self.new_task_edit.setPlaceholderText("New task name…")
@@ -926,6 +920,10 @@ class MainWindow(QMainWindow):
             self._nudge_check(datetime.now())
         if self.target_hours > 0:
             self._update_target_bar()
+        self.banner.set_scores(
+            format_hms(self.today_total()),
+            format_hms(self.target_hours * 3600) if self.target_hours > 0 else "8:00:00",
+        )
         if self.tray is not None:
             self._update_tray_state()
         if date.today() != self._today:
@@ -1180,6 +1178,7 @@ class MainWindow(QMainWindow):
         self._shutdown_done = True
         self.timer.stop()
         self._flash_timer.stop()
+        self.banner.stop()
         if self.tray is not None:
             self.tray.hide()
         self.engine.stop(datetime.now())
