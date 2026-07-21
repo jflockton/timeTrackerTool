@@ -59,6 +59,17 @@ def main() -> int:
         subprocess.run(args, check=True, cwd=ROOT)
 
     if sys.platform == "darwin":
+        # macOS requires a usage string before an app may touch Bluetooth
+        # (needed for the Timeular cube integration).
+        import plistlib
+        plist_path = ROOT / "dist" / "timeTrackerTool.app" / "Contents" / "Info.plist"
+        with open(plist_path, "rb") as handle:
+            info = plistlib.load(handle)
+        info["NSBluetoothAlwaysUsageDescription"] = (
+            "timeTrackerTool connects to your Timeular tracker so flipping "
+            "the cube starts and stops timers.")
+        with open(plist_path, "wb") as handle:
+            plistlib.dump(info, handle)
         print(f"\nDone: {ROOT / 'dist' / 'timeTrackerTool.app'}")
         print("Drag it into /Applications, double-click, done.")
     else:

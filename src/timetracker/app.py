@@ -19,6 +19,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -47,6 +48,7 @@ from PySide6.QtWidgets import (
 
 from . import autostart, db, sync
 from .banner import BannerWidget
+from .cube import SIDES, CubeListener
 from .core import TimerEngine, format_hms, split_span_by_date
 from .idle import IDLE_THRESHOLD_S, IdleWatcher, system_idle_seconds
 from .report import (
@@ -453,6 +455,26 @@ class SettingsDialog(QDialog):
             db.get_setting(conn, "banner_animated", "1") == "1")
         form.addRow("👾 Banner:", self.banner_check)
 
+        self.cube_check = QCheckBox(
+            "Enable Timeular tracker (close the official Timeular app first)")
+        self.cube_check.setChecked(db.get_setting(conn, "cube_enabled", "0") == "1")
+        form.addRow("🎲 Cube:", self.cube_check)
+
+        tasks = db.list_tasks(conn)
+        self.cube_combos: dict[int, QComboBox] = {}
+        for side in SIDES:
+            combo = QComboBox()
+            combo.addItem("— stop timer —", "")
+            current = db.get_setting(conn, f"cube_side_{side}", "")
+            for task in tasks:
+                label = (f"{task['emoji']} {task['name']}" if task["emoji"]
+                         else task["name"])
+                combo.addItem(label, task["task_id"])
+                if task["task_id"] == current:
+                    combo.setCurrentIndex(combo.count() - 1)
+            self.cube_combos[side] = combo
+            form.addRow(f"    Side {side}:", combo)
+
         self.obsidian_edit = QLineEdit(
             db.get_setting(conn, "obsidian_dir", DEFAULT_OBSIDIAN_DIR))
         obsidian_browse = QPushButton("Browse…")
@@ -501,6 +523,10 @@ class SettingsDialog(QDialog):
         db.set_setting(conn, "obsidian_dir", self.obsidian_edit.text().strip())
         db.set_setting(conn, "banner_animated",
                        "1" if self.banner_check.isChecked() else "0")
+        db.set_setting(conn, "cube_enabled",
+                       "1" if self.cube_check.isChecked() else "0")
+        for side, combo in self.cube_combos.items():
+            db.set_setting(conn, f"cube_side_{side}", combo.currentData() or "")
         try:
             if self.login_check.isChecked():
                 autostart.enable()
@@ -750,6 +776,7 @@ class MainWindow(QMainWindow):
         self._flash_timer = QTimer(self)
         self._flash_timer.timeout.connect(self._flash_step)
         self.idle_watcher = IdleWatcher()
+        self.cube: CubeListener | None = None
         self.tray: QSystemTrayIcon | None = None
         self.tray_task_actions: dict[str, QAction] = {}
 
@@ -954,6 +981,46 @@ class MainWindow(QMainWindow):
         self._update_target_bar()
         self.banner.set_animated(
             db.get_setting(self.conn, "banner_animated", "1") == "1")
+        self._apply_cube_setting()
+
+    # --- Timeular cube ----------------------------------------------------
+
+    def _apply_cube_setting(self) -> None:
+        enabled = db.get_setting(self.conn, "cube_enabled", "0") == "1"
+        if enabled and self.cube is None:
+            self.cube = CubeListener()
+            self.cube.side_changed.connect(self._on_cube_side)
+            self.cube.status_changed.connect(
+                lambda msg: self.statusBar().showMessage(msg))
+            self.cube.start()
+        elif not enabled and self.cube is not None:
+            self.cube.stop()
+            self.cube = None
+            self.statusBar().clearMessage()
+
+    def _on_cube_side(self, side: int) -> None:
+        """A cube flip: mapped side up starts that task; the base, an
+        unmapped side, or an unknown value stops the running timer."""
+        if db.get_setting(self.conn, "cube_enabled", "0") != "1":
+            return
+        task_id = (db.get_setting(self.conn, f"cube_side_{side}", "")
+                   if side in SIDES else "")
+        if not task_id or task_id not in self.rows:
+            self.stop_running()
+        elif task_id != self.engine.running_task:
+            self.toggle_task(task_id)
+
+    def stop_running(self) -> None:
+        running = self.engine.running_task
+        if running is None:
+            return
+        self.engine.stop(datetime.now())
+        self.flush_now()
+        if running in self.rows:
+            self.rows[running].refresh()
+        if self.mini is not None:
+            self.mini.refresh()
+        self._update_tray_state()
 
     def today_total(self) -> float:
         """All tasks' seconds today, including the running timer's live span."""
@@ -1188,6 +1255,8 @@ class MainWindow(QMainWindow):
         self.timer.stop()
         self._flash_timer.stop()
         self.banner.stop()
+        if self.cube is not None:
+            self.cube.stop()
         if self.tray is not None:
             self.tray.hide()
         self.engine.stop(datetime.now())

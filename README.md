@@ -10,7 +10,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
@@ -112,6 +112,14 @@ judgmental.
   words "Too much?!" and the answer was no. (If it *is* too much for you,
   Settings (☰) has an "Animated banner" switch — off freezes it to a calm
   static frame.)
+
+- 🎲 **Timeular cube support** — got one of those 8-sided Bluetooth time
+  trackers in a drawer? Enable it in Settings (☰), map each side to a task,
+  and flipping the cube starts that task's timer — base-down or an unmapped
+  side stops it. Auto-reconnects when the cube wakes. Close the official
+  Timeular app first (the tracker accepts one connection at a time); macOS
+  asks for Bluetooth permission once. Uses the community-documented BLE
+  protocol — your cube, your data, no cloud.
 
 ## 💻 System requirements
 

@@ -331,6 +331,46 @@ def test_banner_animation_toggle_via_settings(make_window, tmp_path):
     assert window.banner.timer.isActive()
 
 
+def test_cube_side_flips_start_and_stop_tasks(make_window, tmp_path):
+    db_path = tmp_path / "cube.db"
+    seed = db.connect(db_path)
+    alpha = db.create_task(seed, "Alpha")
+    beta = db.create_task(seed, "Beta")
+    seed.close()
+
+    window = make_window(db_path)
+    db.set_setting(window.conn, "cube_enabled", "1")
+    db.set_setting(window.conn, "cube_side_1", alpha)
+    db.set_setting(window.conn, "cube_side_2", beta)
+
+    window._on_cube_side(1)
+    assert window.engine.running_task == alpha
+    window._on_cube_side(1)  # same side again: no toggle-off, keeps running
+    assert window.engine.running_task == alpha
+    window._on_cube_side(2)  # flip to another mapped side switches task
+    assert window.engine.running_task == beta
+    window._on_cube_side(0)  # resting on the base stops
+    assert window.engine.running_task is None
+    window._on_cube_side(1)
+    window._on_cube_side(5)  # unmapped side stops too
+    assert window.engine.running_task is None
+    window._on_cube_side(99)  # garbage value is treated as stop, not crash
+    assert window.engine.running_task is None
+
+    db.set_setting(window.conn, "cube_enabled", "0")
+    window._on_cube_side(1)  # disabled: flips are ignored
+    assert window.engine.running_task is None
+
+
+def test_cube_listener_lifecycle_without_hardware(qapp):
+    from timetracker.cube import CubeListener
+
+    listener = CubeListener()
+    assert not listener.running
+    listener.stop()  # stopping a never-started listener is a no-op
+    assert not listener.running
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)
