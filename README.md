@@ -76,7 +76,7 @@ judgmental.
   it, so `poetry run timetracker-merge <other.db>` combines your Mac and
   Windows histories with no double-counting, no matter how often you re-run
   it. Reports sum across machines automatically.
-- ☁️ **Auto-sync via any shared folder** — point Settings (⚙) at a Dropbox/
+- ☁️ **Auto-sync via any shared folder** — point Settings (☰) at a Dropbox/
   OneDrive folder and each machine publishes its history there and merges
   everyone else's, automatically on launch and quit. Manual CLI no longer
   required — your machines just converge.
@@ -204,7 +204,7 @@ between the two freely.
 
 Each machine tracks into its own local file, stamped with the machine's name.
 
-**The easy way:** open Settings (⚙) on both machines and point *Sync folder*
+**The easy way:** open Settings (☰) on both machines and point *Sync folder*
 at the same shared folder (Dropbox, OneDrive, a network share). Done — each
 machine publishes its snapshot there and absorbs the others' automatically on
 every launch and quit ("Sync now" in Settings forces it immediately).

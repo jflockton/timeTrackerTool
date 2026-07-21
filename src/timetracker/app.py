@@ -671,7 +671,7 @@ class WeekReportDialog(QDialog):
         if not folder.is_dir():
             QMessageBox.warning(
                 self, "Obsidian export",
-                f"Folder not found:\n{folder}\n\nSet it in Settings (⚙) first.")
+                f"Folder not found:\n{folder}\n\nSet it in Settings (☰) first.")
             return
         self.window.flush_now()
         label = self._period_label()
@@ -787,8 +787,11 @@ class MainWindow(QMainWindow):
         archived_btn = QPushButton("Archived…")
         archived_btn.setToolTip("Restore or permanently delete archived tasks")
         archived_btn.clicked.connect(lambda: ArchivedTasksDialog(self).exec())
-        settings_btn = QPushButton("⚙")
+        settings_btn = QPushButton("☰")
         settings_btn.setFixedWidth(36)
+        burger_font = settings_btn.font()
+        burger_font.setPointSize(burger_font.pointSize() + 2)
+        settings_btn.setFont(burger_font)
         settings_btn.setToolTip("Settings: sync, autostart, daily target, nudges")
         settings_btn.clicked.connect(lambda: SettingsDialog(self).exec())
         bottom = QHBoxLayout()
