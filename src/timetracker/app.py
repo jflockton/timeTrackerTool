@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
 
 from . import autostart, db, icons, sync
 from .banner import BannerWidget
+from .sprites import pixel_text
 from .cube import SIDES, CubeListener, open_bluetooth_settings
 from .core import TimerEngine, format_hms, split_span_by_date
 from .idle import IDLE_THRESHOLD_S, IdleWatcher, system_idle_seconds
@@ -225,6 +226,30 @@ def apply_theme(theme: str) -> None:
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
+
+
+class LogoWidget(QWidget):
+    """The quiet banner alternative: 'TIME TRACKER' in ghost-double pixel
+    lettering. Drawn in the theme's text colour (white-ish on dark, ink on
+    light) with a translucent offset ghost copy — invader energy, no
+    invaders."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFixedHeight(76)
+
+    def paintEvent(self, _event) -> None:
+        colour = self.palette().windowText().color()
+        ghost_colour = QColor(colour)
+        ghost_colour.setAlpha(80)
+        base = pixel_text("TIME TRACKER", colour, 16, 3)
+        ghost = pixel_text("TIME TRACKER", ghost_colour, 16, 3)
+        p = QPainter(self)
+        x = (self.width() - base.width() - 8) // 2
+        y = (self.height() - base.height() - 8) // 2
+        p.drawPixmap(x + 8, y, ghost)
+        p.drawPixmap(x, y + 8, base)
+        p.end()
 
 
 class TaskRow(QFrame):
@@ -748,10 +773,16 @@ class SettingsDialog(QDialog):
         start_row.addWidget(self.nudge_start_time)
         form.addRow("🌅 Morning:", start_row)
 
-        self.banner_check = QCheckBox("Animated banner (marching invaders, saucer raids)")
-        self.banner_check.setChecked(
-            db.get_setting(conn, "banner_animated", "1") == "1")
-        form.addRow("👾 Banner:", self.banner_check)
+        self.banner_combo = QComboBox()
+        for value, text in (
+                ("logo", "TIME TRACKER text logo (quiet)"),
+                ("animated", "Arcade banner — animated invaders"),
+                ("static", "Arcade banner — static frame")):
+            self.banner_combo.addItem(text, value)
+        current_banner = db.get_setting(conn, "banner_mode", "logo")
+        self.banner_combo.setCurrentIndex(
+            max(0, self.banner_combo.findData(current_banner)))
+        form.addRow("👾 Banner:", self.banner_combo)
 
         self.theme_combo = QComboBox()
         for value, text in THEME_CHOICES:
@@ -826,8 +857,7 @@ class SettingsDialog(QDialog):
                        self.nudge_start_time.time().toString("HH:mm")
                        if self.nudge_start_check.isChecked() else "")
         db.set_setting(conn, "obsidian_dir", self.obsidian_edit.text().strip())
-        db.set_setting(conn, "banner_animated",
-                       "1" if self.banner_check.isChecked() else "0")
+        db.set_setting(conn, "banner_mode", self.banner_combo.currentData())
         db.set_setting(conn, "theme", self.theme_combo.currentData())
         db.set_setting(conn, "cube_enabled",
                        "1" if self.cube_check.isChecked() else "0")
@@ -1153,6 +1183,8 @@ class MainWindow(QMainWindow):
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addWidget(self.banner)
+        self.logo = LogoWidget()
+        layout.addWidget(self.logo)
         layout.addLayout(top)
         layout.addWidget(scroll, stretch=1)
         layout.addWidget(self.target_bar)
@@ -1332,8 +1364,10 @@ class MainWindow(QMainWindow):
             db.get_setting(self.conn, "target_hours", DEFAULT_TARGET_HOURS))
         self.target_bar.setVisible(self.target_hours > 0)
         self._update_target_bar()
-        self.banner.set_animated(
-            db.get_setting(self.conn, "banner_animated", "1") == "1")
+        banner_mode = db.get_setting(self.conn, "banner_mode", "logo")
+        self.banner.setVisible(banner_mode != "logo")
+        self.logo.setVisible(banner_mode == "logo")
+        self.banner.set_animated(banner_mode == "animated")
         apply_theme(db.get_setting(self.conn, "theme", ""))
         # Notion-library icons are tinted to the theme — re-render the card
         # chips and tray icons so they flip black/white with the palette.

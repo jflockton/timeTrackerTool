@@ -336,19 +336,59 @@ def test_sync_now_pulls_other_machine_into_open_window(make_window, tmp_path):
     assert db.seconds_for_day(window.conn, task, "2026-07-19") == 900
 
 
-def test_banner_animation_toggle_via_settings(make_window, tmp_path):
+def test_banner_mode_defaults_to_text_logo(make_window, tmp_path):
     window = make_window(tmp_path / "banner.db")
-    assert window.banner.timer.isActive()  # animated by default
+    # Quiet by default: the text logo shows, the arcade banner does not
+    assert window.logo.isVisibleTo(window)
+    assert not window.banner.isVisibleTo(window)
+    assert not window.banner.timer.isActive()
 
-    db.set_setting(window.conn, "banner_animated", "0")
+    db.set_setting(window.conn, "banner_mode", "animated")
     window.apply_settings()
+    assert window.banner.isVisibleTo(window)
+    assert not window.logo.isVisibleTo(window)
+    assert window.banner.timer.isActive()
+
+    db.set_setting(window.conn, "banner_mode", "static")
+    window.apply_settings()
+    assert window.banner.isVisibleTo(window)
     assert not window.banner.timer.isActive()
     assert window.banner.saucer_x is None  # frozen to a clean frame
     assert all(i.state == "alive" for i in window.banner.invaders)
 
-    db.set_setting(window.conn, "banner_animated", "1")
+    db.set_setting(window.conn, "banner_mode", "logo")
     window.apply_settings()
+    assert window.logo.isVisibleTo(window)
+    assert not window.banner.isVisibleTo(window)
+
+
+def test_logo_widget_follows_the_theme(make_window, tmp_path):
+    window = make_window(tmp_path / "logo.db")
+    window.logo.resize(440, 76)
+
+    db.set_setting(window.conn, "theme", "dark")
+    window.apply_settings()
+    assert max(_rendered_lightnesses(window.logo)) > 150  # light lettering
+
+    db.set_setting(window.conn, "theme", "light")
+    window.apply_settings()
+    assert min(_rendered_lightnesses(window.logo)) < 100  # ink lettering
+
+    db.set_setting(window.conn, "theme", "")
+    window.apply_settings()
+
+
+def test_banner_mode_saved_via_settings_dialog(make_window, tmp_path):
+    from timetracker.app import SettingsDialog
+
+    window = make_window(tmp_path / "banner_dlg.db")
+    dialog = SettingsDialog(window)
+    assert dialog.banner_combo.currentData() == "logo"  # quiet default
+    dialog.banner_combo.setCurrentIndex(dialog.banner_combo.findData("animated"))
+    dialog.save()
+    assert db.get_setting(window.conn, "banner_mode", "") == "animated"
     assert window.banner.timer.isActive()
+    dialog.deleteLater()
 
 
 def test_cube_side_flips_start_and_stop_tasks(make_window, tmp_path):
