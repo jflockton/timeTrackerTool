@@ -41,10 +41,14 @@ judgmental.
   scale with the window; make it big enough and each button also shows
   today's tracked time.
 - 🎨 **Task icons (or emoji)** — right-click → **Set icon…** opens a
-  two-tab picker. The Icons tab has 24 built-in, code-drawn icons —
-  coding `</>`, documentation, project work, meetings, calls/headset,
-  email, each in four colours so similar tasks stay distinguishable; one
-  click picks. The Emoji tab keeps the quick-pick grid of 32 plus a
+  two-tab picker. The Icons tab has 64 built-in, code-drawn icons — 16
+  kinds covering the IT working week (coding `</>`, documentation,
+  project work, meetings, calls/headset, email, support/helpdesk,
+  networking, security, servers, terminal, debugging, database, cloud,
+  monitoring, admin/config), each in four colours so similar tasks stay
+  distinguishable; one click picks. They render at the exact size and
+  screen DPI wherever they appear, so they stay as crisp as emoji at any
+  scale. The Emoji tab keeps the quick-pick grid of 32 plus a
   type-anything field (the OS emoji palette works in it too: ⌃⌘Space on
   macOS, Win+. on Windows). Icons show on the task cards, mini-mode
   buttons, tray menu, and the cube side-mapping dropdowns.

@@ -161,7 +161,6 @@ class TaskRow(QFrame):
 
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(22, 22)
-        self.icon_label.setScaledContents(True)
 
         self.name_label = QLabel()
         name_font = self.name_label.font()
@@ -216,7 +215,8 @@ class TaskRow(QFrame):
         self.button.setText("■ Stop" if running else "▶ Start")
         self.button.setChecked(running)
         if icons.is_icon(self.emoji):
-            self.icon_label.setPixmap(icons.pixmap(self.emoji, 44))
+            self.icon_label.setPixmap(
+                icons.pixmap(self.emoji, 22, self.devicePixelRatioF()))
             self.icon_label.show()
             self.name_label.setText(self.name)
         else:
@@ -397,11 +397,13 @@ class MiniTaskButton(QPushButton):
         emoji_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height() - text_zone)
         token = self.emoji()
         if icons.is_icon(token):
+            # Render at the exact size (and DPR) needed — scaling a fixed
+            # bitmap here is what made icons look blocky next to emoji.
             side = max(12, int(min(emoji_rect.width(), emoji_rect.height()) * 0.8))
-            target = QRectF(
-                emoji_rect.center().x() - side / 2,
-                emoji_rect.center().y() - side / 2, side, side)
-            p.drawPixmap(target, icons.pixmap(token, 128), QRectF(0, 0, 128, 128))
+            pm = icons.pixmap(token, side, self.devicePixelRatioF())
+            p.drawPixmap(
+                int(emoji_rect.center().x() - side / 2),
+                int(emoji_rect.center().y() - side / 2), pm)
         else:
             emoji_font = self.font()
             emoji_font.setPixelSize(

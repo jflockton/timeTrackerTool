@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QIcon,
     QLinearGradient,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
 )
@@ -31,7 +32,9 @@ COLOURS = {
     "purple": "#a855f7",
 }
 
-KINDS = ("code", "docs", "project", "meeting", "call", "email")
+KINDS = ("code", "docs", "project", "meeting", "call", "email",
+         "support", "network", "security", "server", "terminal",
+         "bug", "database", "cloud", "monitoring", "admin")
 
 KIND_NAMES = {
     "code": "Coding",
@@ -40,6 +43,16 @@ KIND_NAMES = {
     "meeting": "Meeting",
     "call": "Call",
     "email": "Email",
+    "support": "Support / helpdesk",
+    "network": "Networking",
+    "security": "Security",
+    "server": "Servers / infrastructure",
+    "terminal": "Terminal / scripting",
+    "bug": "Debugging",
+    "database": "Database",
+    "cloud": "Cloud",
+    "monitoring": "Monitoring / dashboards",
+    "admin": "Admin / config",
 }
 
 ICON_CHOICES = [f"{PREFIX}{kind}-{colour}" for kind in KINDS for colour in COLOURS]
@@ -159,6 +172,177 @@ def _paint_email(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
     ])
 
 
+def _paint_support(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # A life buoy: thick ring with four tile-coloured segment cuts
+    w, h = r.width(), r.height()
+    ring = QRectF(r.x() + 0.26 * w, r.y() + 0.26 * h, 0.48 * w, 0.48 * h)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(fg, w * 0.13))
+    p.drawEllipse(ring)
+    p.setPen(_pen(bg, w * 0.05))
+    c = ring.center()
+    for dx, dy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+        # Cut only across the ring band, not past it — otherwise it reads
+        # as an X over a circle instead of a segmented buoy.
+        p.drawLine(QPointF(c.x() + dx * 0.115 * w, c.y() + dy * 0.115 * h),
+                   QPointF(c.x() + dx * 0.215 * w, c.y() + dy * 0.215 * h))
+
+
+def _paint_network(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # Three linked nodes
+    w, h = r.width(), r.height()
+    top = QPointF(r.x() + 0.50 * w, r.y() + 0.30 * h)
+    left = QPointF(r.x() + 0.30 * w, r.y() + 0.68 * h)
+    right = QPointF(r.x() + 0.70 * w, r.y() + 0.68 * h)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(fg, w * 0.055))
+    p.drawLine(top, left)
+    p.drawLine(top, right)
+    p.drawLine(left, right)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    for node in (top, left, right):
+        p.drawEllipse(node, 0.10 * w, 0.10 * h)
+
+
+def _paint_security(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # A shield with a tick
+    w, h = r.width(), r.height()
+    path = QPainterPath()
+    path.moveTo(r.x() + 0.50 * w, r.y() + 0.18 * h)
+    path.lineTo(r.x() + 0.76 * w, r.y() + 0.28 * h)
+    path.cubicTo(r.x() + 0.76 * w, r.y() + 0.58 * h,
+                 r.x() + 0.66 * w, r.y() + 0.76 * h,
+                 r.x() + 0.50 * w, r.y() + 0.84 * h)
+    path.cubicTo(r.x() + 0.34 * w, r.y() + 0.76 * h,
+                 r.x() + 0.24 * w, r.y() + 0.58 * h,
+                 r.x() + 0.24 * w, r.y() + 0.28 * h)
+    path.closeSubpath()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    p.drawPath(path)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(bg, w * 0.06))
+    p.drawPolyline([QPointF(r.x() + 0.38 * w, r.y() + 0.50 * h),
+                    QPointF(r.x() + 0.47 * w, r.y() + 0.60 * h),
+                    QPointF(r.x() + 0.63 * w, r.y() + 0.38 * h)])
+
+
+def _paint_server(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # A rack: three slats, each with an LED
+    w, h = r.width(), r.height()
+    p.setPen(Qt.PenStyle.NoPen)
+    for i in range(3):
+        slat = QRectF(r.x() + 0.24 * w, r.y() + (0.24 + i * 0.20) * h,
+                      0.52 * w, 0.15 * h)
+        p.setBrush(fg)
+        p.drawRoundedRect(slat, 0.03 * w, 0.03 * w)
+        p.setBrush(bg)
+        p.drawEllipse(QPointF(slat.right() - 0.07 * w, slat.center().y()),
+                      0.030 * w, 0.030 * h)
+
+
+def _paint_terminal(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # A screen with a "> _" prompt
+    w, h = r.width(), r.height()
+    screen = QRectF(r.x() + 0.20 * w, r.y() + 0.24 * h, 0.60 * w, 0.52 * h)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    p.drawRoundedRect(screen, 0.05 * w, 0.05 * w)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(bg, w * 0.06))
+    p.drawPolyline([QPointF(r.x() + 0.30 * w, r.y() + 0.38 * h),
+                    QPointF(r.x() + 0.40 * w, r.y() + 0.48 * h),
+                    QPointF(r.x() + 0.30 * w, r.y() + 0.58 * h)])
+    p.drawLine(QPointF(r.x() + 0.48 * w, r.y() + 0.62 * h),
+               QPointF(r.x() + 0.62 * w, r.y() + 0.62 * h))
+
+
+def _paint_bug(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    w, h = r.width(), r.height()
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(fg, w * 0.045))
+    body = QRectF(r.x() + 0.36 * w, r.y() + 0.36 * h, 0.28 * w, 0.40 * h)
+    for side in (-1, 1):
+        x_edge = body.center().x() + side * body.width() / 2
+        for i, y_frac in enumerate((0.44, 0.56, 0.68)):
+            p.drawLine(QPointF(x_edge, r.y() + y_frac * h),
+                       QPointF(x_edge + side * 0.11 * w,
+                               r.y() + (y_frac + (i - 1) * 0.05) * h))
+        p.drawLine(QPointF(body.center().x() + side * 0.06 * w, body.top()),
+                   QPointF(body.center().x() + side * 0.13 * w,
+                           body.top() - 0.09 * h))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    p.drawEllipse(body)
+    p.setPen(_pen(bg, w * 0.035))
+    p.drawLine(QPointF(body.center().x(), body.top() + 0.06 * h),
+               QPointF(body.center().x(), body.bottom() - 0.06 * h))
+
+
+def _paint_database(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # The classic cylinder
+    w, h = r.width(), r.height()
+    x, top, width = r.x() + 0.28 * w, r.y() + 0.22 * h, 0.44 * w
+    cap = 0.14 * h
+    body_h = 0.48 * h
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    p.drawRect(QRectF(x, top + cap / 2, width, body_h))
+    p.drawEllipse(QRectF(x, top + body_h, width, cap))
+    p.drawEllipse(QRectF(x, top, width, cap))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(bg, w * 0.035))
+    for frac in (0.36, 0.54):
+        p.drawArc(QRectF(x, top + frac * h, width, cap), 180 * 16, 180 * 16)
+
+
+def _paint_cloud(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    w, h = r.width(), r.height()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    p.drawEllipse(QRectF(r.x() + 0.24 * w, r.y() + 0.42 * h, 0.26 * w, 0.26 * h))
+    p.drawEllipse(QRectF(r.x() + 0.36 * w, r.y() + 0.30 * h, 0.32 * w, 0.32 * h))
+    p.drawEllipse(QRectF(r.x() + 0.52 * w, r.y() + 0.42 * h, 0.26 * w, 0.26 * h))
+    p.drawRect(QRectF(r.x() + 0.32 * w, r.y() + 0.52 * h, 0.38 * w, 0.16 * h))
+
+
+def _paint_monitoring(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # Axes with a rising line and an end dot
+    w, h = r.width(), r.height()
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(_pen(fg, w * 0.05))
+    p.drawPolyline([QPointF(r.x() + 0.26 * w, r.y() + 0.26 * h),
+                    QPointF(r.x() + 0.26 * w, r.y() + 0.74 * h),
+                    QPointF(r.x() + 0.78 * w, r.y() + 0.74 * h)])
+    p.setPen(_pen(fg, w * 0.06))
+    p.drawPolyline([QPointF(r.x() + 0.32 * w, r.y() + 0.62 * h),
+                    QPointF(r.x() + 0.46 * w, r.y() + 0.50 * h),
+                    QPointF(r.x() + 0.56 * w, r.y() + 0.58 * h),
+                    QPointF(r.x() + 0.72 * w, r.y() + 0.34 * h)])
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    p.drawEllipse(QPointF(r.x() + 0.72 * w, r.y() + 0.34 * h),
+                  0.045 * w, 0.045 * h)
+
+
+def _paint_admin(p: QPainter, r: QRectF, fg: QColor, bg: QColor) -> None:
+    # A gear: eight teeth, ring, hollow centre
+    w = r.width()
+    c = r.center()
+    p.save()
+    p.translate(c)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(fg)
+    for _ in range(8):
+        p.drawRect(QRectF(-0.055 * w, -0.34 * w, 0.11 * w, 0.12 * w))
+        p.rotate(45)
+    p.drawEllipse(QPointF(0, 0), 0.26 * w, 0.26 * w)
+    p.setBrush(bg)
+    p.drawEllipse(QPointF(0, 0), 0.11 * w, 0.11 * w)
+    p.restore()
+
+
 _PAINTERS = {
     "code": _paint_code,
     "docs": _paint_docs,
@@ -166,31 +350,54 @@ _PAINTERS = {
     "meeting": _paint_meeting,
     "call": _paint_call,
     "email": _paint_email,
+    "support": _paint_support,
+    "network": _paint_network,
+    "security": _paint_security,
+    "server": _paint_server,
+    "terminal": _paint_terminal,
+    "bug": _paint_bug,
+    "database": _paint_database,
+    "cloud": _paint_cloud,
+    "monitoring": _paint_monitoring,
+    "admin": _paint_admin,
 }
 
 
-@lru_cache(maxsize=256)
-def pixmap(token: str, size: int) -> QPixmap:
-    """Render an icon token at the given pixel size (cached per size)."""
+@lru_cache(maxsize=512)
+def pixmap(token: str, size: int, dpr: float = 1.0) -> QPixmap:
+    """Render an icon token at the given logical size (cached per size).
+
+    Everything is vector-drawn, so always render at the exact size needed —
+    never scale a pixmap afterwards, that's what looks blocky next to
+    text-rendered emoji. Pass the target widget's devicePixelRatioF() so
+    high-DPI displays get a full-resolution render too.
+    """
     kind, colour = parse(token)
     base = QColor(COLOURS[colour])
-    canvas = QPixmap(size, size)
+    px = max(1, int(round(size * dpr)))
+    canvas = QPixmap(px, px)
     canvas.fill(Qt.GlobalColor.transparent)
 
     p = QPainter(canvas)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    rect = QRectF(0, 0, size, size).adjusted(
-        size * 0.04, size * 0.04, -size * 0.04, -size * 0.04)
+    rect = QRectF(0, 0, px, px).adjusted(
+        px * 0.04, px * 0.04, -px * 0.04, -px * 0.04)
     gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
     gradient.setColorAt(0.0, base.lighter(114))
     gradient.setColorAt(1.0, base.darker(112))
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(gradient)
-    p.drawRoundedRect(rect, size * 0.22, size * 0.22)
+    p.drawRoundedRect(rect, px * 0.22, px * 0.22)
     _PAINTERS[kind](p, rect, QColor("white"), base)
     p.end()
+    canvas.setDevicePixelRatio(dpr)
     return canvas
 
 
 def qicon(token: str) -> QIcon:
-    return QIcon(pixmap(token, 64))
+    """Multi-resolution QIcon so menus, tabs, and combos all pick a render
+    made for their exact display size instead of scaling one bitmap."""
+    icon = QIcon()
+    for size in (16, 20, 24, 32, 48, 64, 128):
+        icon.addPixmap(pixmap(token, size))
+    return icon
