@@ -1,6 +1,6 @@
 [project]
 name = "timetracker"
-version = "1.0.0"
+version = "2.0.0"
 description = "Cross-platform per-task timer buttons with daily totals and a weekly breakdown"
 requires-python = ">=3.11,<3.14"
 dependencies = [

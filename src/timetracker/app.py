@@ -92,7 +92,7 @@ def _parse_hhmm(value: str) -> dtime | None:
     except (ValueError, AttributeError):
         return None
 
-# Quick-pick emoji for the Set emoji dialog (any emoji can still be typed)
+# Quick-pick grid for the Set icon dialog's Emoji tab (any emoji can be typed)
 EMOJI_CHOICES = [
     "⏱️", "🔥", "🛡️", "🌐", "🔧", "💻", "🖥️", "📞",
     "📧", "📝", "📊", "📚", "🧠", "🔐", "🔑", "🚨",
@@ -535,7 +535,7 @@ class NotionColourPopup(QFrame):
 
 
 class MiniTaskButton(QPushButton):
-    """Mini-mode button: a configurable emoji that scales with the button,
+    """Mini-mode button: the task's icon or emoji scaled to the button,
     plus the task name and today's time once the button is tall enough."""
 
     def __init__(self, task_id: str, window: "MainWindow") -> None:

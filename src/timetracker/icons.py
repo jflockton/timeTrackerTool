@@ -1,11 +1,16 @@
-"""Code-drawn task icons — a built-in alternative to emoji for task buttons.
+"""The task icon system — everything that isn't a literal emoji.
 
-Six kinds (code, docs, project, meeting, call, email) in four colours each,
-all drawn with QPainter at whatever size is asked for — no image files, in
-keeping with the rest of the artwork.
+Two families, both rendered DPI-exact at whatever size is asked for:
 
-An icon choice is stored in the tasks.emoji column as an "icon:<kind>-<colour>"
-token; anything else in that column is treated as a literal emoji string.
+- Coloured tiles: 16 kinds covering the IT working week, four colours
+  each, drawn entirely with QPainter (no image files). Stored in the
+  tasks.emoji column as "icon:<kind>-<colour>" tokens.
+- The Library: the free Notion icon set (884 bundled SVGs, via
+  files2notion.com — credited in the README) plus a few drawn in-house,
+  tinted at render time. Stored as "notion:<name>" (auto: black/white
+  follows the theme) or "notion:<name>:<colour>" for a fixed colour.
+
+Anything else in the emoji column is treated as a literal emoji string.
 """
 
 from __future__ import annotations
