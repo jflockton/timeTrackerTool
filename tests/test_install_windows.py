@@ -19,17 +19,21 @@ FAKE_ENV = {
 
 
 def test_current_user_paths_stay_inside_the_profile():
+    # Expected paths are built from components (not backslash literals) so
+    # the assertions hold on the macOS CI runner too, where "\" in a string
+    # is not a path separator.
     install_dir, shortcut = install_windows.resolve_paths("current", FAKE_ENV)
-    assert install_dir == Path(r"C:\Users\pat\AppData\Local\Programs\timeTrackerTool")
-    assert shortcut == Path(r"C:\Users\pat\AppData\Roaming\Microsoft\Windows"
-                            r"\Start Menu\Programs\timeTrackerTool.lnk")
+    assert install_dir == Path(FAKE_ENV["LOCALAPPDATA"], "Programs",
+                               "timeTrackerTool")
+    assert shortcut == Path(FAKE_ENV["APPDATA"], "Microsoft", "Windows",
+                            "Start Menu", "Programs", "timeTrackerTool.lnk")
 
 
 def test_all_users_paths_use_the_machine_locations():
     install_dir, shortcut = install_windows.resolve_paths("all", FAKE_ENV)
-    assert install_dir == Path(r"C:\Program Files\timeTrackerTool")
-    assert shortcut == Path(r"C:\ProgramData\Microsoft\Windows"
-                            r"\Start Menu\Programs\timeTrackerTool.lnk")
+    assert install_dir == Path(FAKE_ENV["ProgramFiles"], "timeTrackerTool")
+    assert shortcut == Path(FAKE_ENV["ProgramData"], "Microsoft", "Windows",
+                            "Start Menu", "Programs", "timeTrackerTool.lnk")
 
 
 def test_unknown_scope_is_rejected():
