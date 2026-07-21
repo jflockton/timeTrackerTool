@@ -14,6 +14,9 @@ accepts one connection at a time.
 from __future__ import annotations
 
 import asyncio
+import os
+import subprocess
+import sys
 import threading
 
 from PySide6.QtCore import QObject, Signal
@@ -22,6 +25,31 @@ ORIENTATION_SERVICE = "c7e70010-c847-11e6-8175-8c89a55d403c"
 ORIENTATION_CHAR = "c7e70012-c847-11e6-8175-8c89a55d403c"
 NAME_HINTS = ("timeular", "zei")
 SIDES = range(1, 9)
+
+
+def friendly_error(exc: Exception) -> str:
+    """Turn bleak's raw exceptions (often tuples) into one readable line."""
+    message = (exc.args[0] if exc.args and isinstance(exc.args[0], str)
+               else str(exc))
+    lowered = message.lower()
+    if "denied" in lowered and "bluetooth" in lowered:
+        return ("Bluetooth access denied — allow timeTrackerTool in the "
+                "OS settings, then restart the app")
+    if "turned off" in lowered or "powered off" in lowered:
+        return "Bluetooth is turned off"
+    return message.strip().rstrip(".")[:90]
+
+
+def open_bluetooth_settings() -> None:
+    """Jump straight to the OS page where Bluetooth access is granted."""
+    if sys.platform == "darwin":
+        subprocess.Popen([
+            "open",
+            "x-apple.systempreferences:com.apple.preference.security"
+            "?Privacy_Bluetooth",
+        ])
+    elif sys.platform.startswith("win"):
+        os.startfile("ms-settings:bluetooth")  # noqa: S606 (OS settings URI)
 
 
 class CubeListener(QObject):
@@ -90,8 +118,15 @@ class CubeListener(QObject):
                 if not self._stop.is_set():
                     self.status_changed.emit("Cube: disconnected — reconnecting…")
             except Exception as exc:  # BLE is flaky by nature; keep trying
-                self.status_changed.emit(f"Cube: {exc} — retrying…")
-                await self._sleep(5)
+                message = friendly_error(exc)
+                if "denied" in message:
+                    # Nothing will change until the user acts (and restarts),
+                    # so back way off instead of hammering CoreBluetooth.
+                    self.status_changed.emit(f"Cube: {message}")
+                    await self._sleep(30)
+                else:
+                    self.status_changed.emit(f"Cube: {message} — retrying…")
+                    await self._sleep(5)
         self.status_changed.emit("Cube: off")
 
     async def _sleep(self, seconds: float) -> None:

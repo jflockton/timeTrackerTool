@@ -48,7 +48,7 @@ from PySide6.QtWidgets import (
 
 from . import autostart, db, sync
 from .banner import BannerWidget
-from .cube import SIDES, CubeListener
+from .cube import SIDES, CubeListener, open_bluetooth_settings
 from .core import TimerEngine, format_hms, split_span_by_date
 from .idle import IDLE_THRESHOLD_S, IdleWatcher, system_idle_seconds
 from .report import (
@@ -988,15 +988,26 @@ class MainWindow(QMainWindow):
     def _apply_cube_setting(self) -> None:
         enabled = db.get_setting(self.conn, "cube_enabled", "0") == "1"
         if enabled and self.cube is None:
+            if not hasattr(self, "_bt_settings_btn"):
+                self._bt_settings_btn = QPushButton("Open Bluetooth settings")
+                self._bt_settings_btn.clicked.connect(open_bluetooth_settings)
+                self._bt_settings_btn.hide()
+                self.statusBar().addPermanentWidget(self._bt_settings_btn)
             self.cube = CubeListener()
             self.cube.side_changed.connect(self._on_cube_side)
-            self.cube.status_changed.connect(
-                lambda msg: self.statusBar().showMessage(msg))
+            self.cube.status_changed.connect(self._on_cube_status)
             self.cube.start()
         elif not enabled and self.cube is not None:
             self.cube.stop()
             self.cube = None
             self.statusBar().clearMessage()
+            if hasattr(self, "_bt_settings_btn"):
+                self._bt_settings_btn.hide()
+
+    def _on_cube_status(self, message: str) -> None:
+        self.statusBar().showMessage(message)
+        if hasattr(self, "_bt_settings_btn"):
+            self._bt_settings_btn.setVisible("denied" in message.lower())
 
     def _on_cube_side(self, side: int) -> None:
         """A cube flip: mapped side up starts that task; the base, an

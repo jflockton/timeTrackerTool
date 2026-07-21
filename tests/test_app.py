@@ -371,6 +371,34 @@ def test_cube_listener_lifecycle_without_hardware(qapp):
     assert not listener.running
 
 
+def test_cube_friendly_errors():
+    from timetracker.cube import friendly_error
+
+    denied = Exception(
+        "Bluetooth access is denied by the user for the current application. "
+        "Check macOS privacy settings.", "SomeEnumJunk")
+    assert friendly_error(denied) == (
+        "Bluetooth access denied — allow timeTrackerTool in the OS settings, "
+        "then restart the app")
+    assert friendly_error(Exception("Bluetooth device is turned off")) \
+        == "Bluetooth is turned off"
+    long = Exception("x" * 300)
+    assert len(friendly_error(long)) <= 90
+
+
+def test_cube_denied_status_shows_settings_button(make_window, tmp_path):
+    window = make_window(tmp_path / "cube_btn.db")
+    db.set_setting(window.conn, "cube_enabled", "1")
+    window._apply_cube_setting()
+    window.cube.stop()  # don't actually scan during the test
+
+    window._on_cube_status("Cube: Bluetooth access denied — allow…")
+    assert window._bt_settings_btn.isVisible() or not window.isVisible()
+    assert not window._bt_settings_btn.isHidden()
+    window._on_cube_status("Cube: connected (Timeular Tra)")
+    assert window._bt_settings_btn.isHidden()
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)

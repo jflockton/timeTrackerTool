@@ -10,7 +10,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
