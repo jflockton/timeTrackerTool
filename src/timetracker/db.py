@@ -284,10 +284,11 @@ def merge_from(conn: sqlite3.Connection, other: sqlite3.Connection) -> dict[str,
     stats = {"tasks_added": 0, "entries_merged": 0}
     for task in other.execute("SELECT * FROM tasks"):
         cur = conn.execute(
-            "INSERT OR IGNORE INTO tasks (task_id, name, created_at, archived, emoji)"
-            " VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO tasks (task_id, name, created_at, archived,"
+            " emoji, show_in_mini, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (task["task_id"], task["name"], task["created_at"],
-             task["archived"], task["emoji"]),
+             task["archived"], task["emoji"], task["show_in_mini"],
+             task["sort_order"]),
         )
         stats["tasks_added"] += cur.rowcount
     for entry in other.execute("SELECT * FROM time_entries"):

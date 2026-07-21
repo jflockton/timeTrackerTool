@@ -187,6 +187,21 @@ def test_mini_and_order_columns_migrate_old_databases():
     connection.close()
 
 
+def test_merge_carries_order_and_mini_flag(conn):
+    other = db.connect(":memory:")
+    a = db.create_task(other, "A")
+    b = db.create_task(other, "B")
+    db.move_task(other, b, -1)          # other machine ordered B before A
+    db.set_task_mini(other, a, False)   # and hid A from its mini strip
+
+    db.merge_from(conn, other)
+    tasks = {t["task_id"]: t for t in db.list_tasks(conn)}
+    assert [t["task_id"] for t in db.list_tasks(conn)] == [b, a]
+    assert tasks[a]["show_in_mini"] == 0
+    assert tasks[b]["show_in_mini"] == 1
+    other.close()
+
+
 def test_deduct_seconds_clamps_and_targets_this_machine(conn):
     task_id = db.create_task(conn, "Task")
     db.add_seconds(conn, task_id, "2026-07-20", 100)          # this machine

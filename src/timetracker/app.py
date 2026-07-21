@@ -325,7 +325,12 @@ class EmojiPickerDialog(QDialog):
     def get_emoji(parent: QWidget | None, task_name: str, current: str) -> tuple[str, bool]:
         dialog = EmojiPickerDialog(parent, task_name, current)
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
-        return dialog.edit.text(), accepted
+        text = dialog.edit.text()
+        if accepted and not text.strip() and icons.is_icon(current):
+            # The field starts blank for icon tasks; a bare OK means
+            # "no change", not "remove my icon".
+            text = current
+        return text, accepted
 
 
 class MiniTaskButton(QPushButton):
@@ -745,7 +750,12 @@ class ArchivedTasksDialog(QDialog):
             row = QWidget()
             box = QHBoxLayout(row)
             box.setContentsMargins(4, 2, 4, 2)
-            title = f"{task['emoji']} {task['name']}" if task["emoji"] else task["name"]
+            if icons.is_icon(task["emoji"]):
+                title = task["name"]  # the raw icon:… token is not for humans
+            elif task["emoji"]:
+                title = f"{task['emoji']} {task['name']}"
+            else:
+                title = task["name"]
             total = db.total_seconds(self.window.conn, task["task_id"])
             box.addWidget(QLabel(f"{title} — {format_hms(total)} logged"), stretch=1)
             restore = QPushButton("Restore")
@@ -762,7 +772,8 @@ class ArchivedTasksDialog(QDialog):
         task = self.window.conn.execute(
             "SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
         db.unarchive_task(self.window.conn, task_id)
-        self.window._add_row(task["task_id"], task["name"], task["emoji"])
+        self.window._add_row(task["task_id"], task["name"], task["emoji"],
+                             bool(task["show_in_mini"]))
         if self.window.mini is not None:
             self.window.mini.rebuild()
             self.window.mini.refresh()

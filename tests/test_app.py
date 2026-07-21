@@ -13,7 +13,7 @@ pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialog  # noqa: E402
 
 from timetracker import db  # noqa: E402
 from timetracker.app import (  # noqa: E402
@@ -573,6 +573,36 @@ def test_icon_token_shows_pixmap_not_raw_text(make_window, tmp_path):
     button = window.mini.buttons[task_id]
     button.resize(80, 80)
     assert not button.grab().isNull()  # paints the pixmap path without crashing
+
+
+def test_restore_from_archive_keeps_mini_setting(make_window, tmp_path):
+    from timetracker.app import ArchivedTasksDialog
+
+    db_path = tmp_path / "restore.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Hidden one")
+    db.set_task_mini(seed, task_id, False)
+    db.archive_task(seed, task_id)
+    seed.close()
+
+    window = make_window(db_path)
+    dialog = ArchivedTasksDialog(window)
+    dialog.restore_task(task_id)
+    assert not window.rows[task_id].show_in_mini  # setting survived the trip
+    window.enter_mini()
+    assert task_id not in window.mini.buttons
+    dialog.deleteLater()
+
+
+def test_bare_ok_on_icon_task_keeps_the_icon(qapp, monkeypatch):
+    from timetracker import icons
+
+    token = icons.ICON_CHOICES[0]
+    monkeypatch.setattr(
+        "timetracker.app.QDialog.exec", lambda self: QDialog.DialogCode.Accepted)
+    text, accepted = EmojiPickerDialog.get_emoji(None, "Alpha", token)
+    assert accepted and text == token  # untouched dialog is a no-op
+    qapp.processEvents()
 
 
 def test_emoji_picker_grid_fills_the_field(qapp):

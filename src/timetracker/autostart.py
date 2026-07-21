@@ -21,7 +21,17 @@ _RUN_NAME = "timeTrackerTool"
 def launch_command() -> list[str]:
     if getattr(sys, "frozen", False):  # packaged app
         return [sys.executable]
-    return [sys.executable, "-m", "timetracker"]
+    return [str(_source_python(Path(sys.executable))), "-m", "timetracker"]
+
+
+def _source_python(executable: Path) -> Path:
+    """On Windows, prefer the console-less pythonw.exe next to python.exe so
+    a from-source login launch doesn't flash a terminal window."""
+    if sys.platform.startswith("win"):
+        windowless = executable.with_name("pythonw.exe")
+        if windowless.exists():
+            return windowless
+    return executable
 
 
 def _plist_path(home: Path | None = None) -> Path:

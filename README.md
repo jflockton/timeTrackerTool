@@ -10,7 +10,8 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Tests](https://img.shields.io/badge/tests-84%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
@@ -313,7 +314,7 @@ per task per day, upserted).
 ## 🛠️ Development
 
 ```bash
-poetry run pytest -q                        # 32 tests; GUI tests run offscreen
+poetry run pytest -q                        # 84 tests; GUI tests run offscreen
 poetry run python scripts/make_assets.py    # regenerate icon + banner artwork
 ```
 
@@ -337,7 +338,11 @@ before anyone sits at the Windows box.
 - [x] 🔀 Cross-machine merge tool
 - [x] 👾 Animate the banner invaders (+ saucer strafing runs, live 1UP score)
 - [x] 🤖 CI — tests run on macOS + Windows on every push (GitHub Actions)
-- [ ] 🪟 Test on Windows (build the .exe there and give it a real day)
+- [x] 🪟 Test on Windows (built, installed via the Start Menu installer,
+  full suite green — v1.0.0 shipped from the Windows box)
+- [x] 🪟 Start Menu installer (current user or all users)
+- [x] 🎨 Code-drawn task icons + per-task mini-mode line-up + re-ordering
+- [x] 🌗 Light / dark / follow-the-OS theme
 
 ## ❓ FAQ
 
