@@ -163,6 +163,22 @@ def test_merge_is_idempotent_and_sums_across_machines(conn):
     other.close()
 
 
+def test_settings_roundtrip_and_default(conn):
+    assert db.get_setting(conn, "sync_dir", "fallback") == "fallback"
+    db.set_setting(conn, "sync_dir", "/tmp/x")
+    db.set_setting(conn, "sync_dir", "/tmp/y")  # upsert overwrites
+    assert db.get_setting(conn, "sync_dir") == "/tmp/y"
+
+
+def test_seconds_for_day_all_tasks(conn):
+    a = db.create_task(conn, "A")
+    b = db.create_task(conn, "B")
+    db.add_seconds(conn, a, "2026-07-20", 100)
+    db.add_seconds(conn, b, "2026-07-20", 50, "otherbox")
+    db.add_seconds(conn, a, "2026-07-21", 999)
+    assert db.seconds_for_day_all_tasks(conn, "2026-07-20") == 150
+
+
 def test_default_db_path_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("TIMETRACKER_DB", str(tmp_path / "custom.db"))
     assert db.default_db_path() == tmp_path / "custom.db"

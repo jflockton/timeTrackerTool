@@ -9,6 +9,7 @@ from timetracker.report import (
     month_dates,
     render_text,
     to_csv,
+    to_markdown,
     week_dates,
 )
 
@@ -87,6 +88,18 @@ def test_to_csv_round_numbers_and_totals(conn):
     assert "Alpha,3600," in lines[1]
     assert lines[2].startswith("TOTAL,3600,")
     assert "(values are seconds)" in lines[-1]
+
+
+def test_to_markdown_note_shape(conn):
+    a = db.create_task(conn, "Alpha")
+    db.add_seconds(conn, a, "2026-07-20", 3723)
+    note = to_markdown(build_week_report(conn, date(2026, 7, 20)),
+                       "Week of 20 Jul 2026")
+    assert note.startswith("---\ntags: [time-tracker, report]")
+    assert "# ⏱️ timeTracker — Week of 20 Jul 2026" in note
+    assert "| Alpha | 1:02:03 |" in note
+    assert "| **TOTAL** | **1:02:03** |" in note
+    assert "| Mon 20 Jul | 1:02:03 | 1:02:03 |" in note  # day-by-day row
 
 
 def test_render_text_contains_totals(conn):

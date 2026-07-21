@@ -96,6 +96,42 @@ def to_csv(report: PeriodReport) -> str:
     return out.getvalue()
 
 
+def to_markdown(report: PeriodReport, period_label: str) -> str:
+    """Obsidian-ready note: frontmatter, a per-task summary, then a
+    day-by-day table (dates as rows, tasks as columns)."""
+    lines = [
+        "---",
+        "tags: [time-tracker, report]",
+        f"date: {report.dates[0].isoformat()}",
+        "---",
+        "",
+        f"# ⏱️ timeTracker — {period_label}",
+        "",
+        "## 📊 Totals",
+        "",
+        "| Task | Total |",
+        "|---|---|",
+    ]
+    for row in report.rows:
+        lines.append(f"| {row.task_name} | {format_hms(row.total_seconds)} |")
+    lines.append(f"| **TOTAL** | **{format_hms(report.grand_total)}** |")
+
+    lines += ["", "## 📅 Day by day", ""]
+    header = "| Date | " + " | ".join(r.task_name for r in report.rows) + " | Day total |"
+    lines.append(header)
+    lines.append("|---" * (len(report.rows) + 2) + "|")
+    for i, day in enumerate(report.dates):
+        cells = [format_hms(r.daily_seconds[i]) if r.daily_seconds[i] else "-"
+                 for r in report.rows]
+        day_total = report.day_totals[i]
+        lines.append(
+            f"| {day.strftime('%a %d %b')} | " + " | ".join(cells)
+            + f" | {format_hms(day_total) if day_total else '-'} |"
+        )
+    lines += ["", "*Exported from timeTrackerTool.* 👾", ""]
+    return "\n".join(lines)
+
+
 def render_text(report: WeekReport) -> str:
     """Plain-text rendering — used by the CLI report and handy in tests."""
     day_headers = [d.strftime("%a %d") for d in report.dates]

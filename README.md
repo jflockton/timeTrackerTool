@@ -10,7 +10,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
@@ -76,6 +76,21 @@ judgmental.
   it, so `poetry run timetracker-merge <other.db>` combines your Mac and
   Windows histories with no double-counting, no matter how often you re-run
   it. Reports sum across machines automatically.
+- ☁️ **Auto-sync via any shared folder** — point Settings (⚙) at a Dropbox/
+  OneDrive folder and each machine publishes its history there and merges
+  everyone else's, automatically on launch and quit. Manual CLI no longer
+  required — your machines just converge.
+- 🚀 **Launch at login** — one checkbox in Settings registers the app as a
+  macOS LaunchAgent / Windows Run entry, packaged or from source.
+- 🎯 **Daily target bar** — set your hours (default 7.5) and a progress bar
+  fills as the day accumulates across all tasks. Beat it and the bar says
+  so, arcade-style.
+- ⏰ **Forgot-me nudges** — a system notification if a timer is still running
+  past your evening cutoff, or if nothing has been tracked by mid-morning.
+  Once per day each, both configurable or offable.
+- 🧠 **Send to Obsidian** — one button in Reports writes the current week or
+  month as a formatted markdown note (frontmatter, totals table, day-by-day
+  table) straight into your vault's inbox folder.
 - 🪪 **Stable generated IDs** — each task gets an 8-character ID at creation;
   all logged time hangs off the ID, so renaming a task never orphans its
   history.
@@ -185,18 +200,23 @@ The packaged app is self-contained — the target machine doesn't need Python
 at all. It uses the same data file as running from source, so you can switch
 between the two freely.
 
-## 🔀 Two machines? Merging your history
+## 🔀 Two machines? Syncing your history
 
 Each machine tracks into its own local file, stamped with the machine's name.
-To combine them (e.g. pull the Windows history into the Mac):
+
+**The easy way:** open Settings (⚙) on both machines and point *Sync folder*
+at the same shared folder (Dropbox, OneDrive, a network share). Done — each
+machine publishes its snapshot there and absorbs the others' automatically on
+every launch and quit ("Sync now" in Settings forces it immediately).
+
+**The manual way** (one-off merges, USB stick, etc.):
 
 ```bash
-# copy the other machine's timetracker.db over (USB, Dropbox, scp…) then:
 poetry run timetracker-merge /path/to/other/timetracker.db
 ```
 
-Safe to re-run any time — entries are keyed per machine, so nothing is ever
-double-counted. Reports automatically sum across machines.
+Either way it's safe to repeat — entries are keyed per machine, so nothing is
+ever double-counted. Reports automatically sum across machines.
 
 ## 🔄 Updating
 

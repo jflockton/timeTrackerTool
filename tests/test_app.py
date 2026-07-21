@@ -237,6 +237,85 @@ def test_report_dialog_month_toggle_and_csv(make_window, tmp_path):
     dialog.deleteLater()
 
 
+def test_nudges_fire_once_per_day(make_window, tmp_path):
+    from datetime import datetime
+
+    db_path = tmp_path / "nudge.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    late = datetime(2026, 7, 20, 19, 0)
+
+    # nothing tracked + past morning time -> start nudge, exactly once
+    assert window._nudge_check(late) == ["start"]
+    assert window._nudge_check(late) == []
+
+    # timer running past evening time -> stop nudge, exactly once
+    window.toggle_task(task_id)
+    assert window._nudge_check(late) == ["stop"]
+    assert window._nudge_check(late) == []
+    window.toggle_task(task_id)
+
+
+def test_nudges_respect_disabled_and_early_times(make_window, tmp_path):
+    from datetime import datetime
+
+    db_path = tmp_path / "nudge2.db"
+    seed = db.connect(db_path)
+    db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    early = datetime(2026, 7, 20, 8, 0)
+    assert window._nudge_check(early) == []  # before both nudge times
+
+    db.set_setting(window.conn, "nudge_start_time", "")  # disabled
+    db.set_setting(window.conn, "nudge_stop_time", "")
+    late = datetime(2026, 7, 20, 23, 0)
+    assert window._nudge_check(late) == []
+
+
+def test_daily_target_bar_math(make_window, tmp_path):
+    from datetime import date as date_mod
+
+    db_path = tmp_path / "target.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    assert window.target_hours == 7.5  # default on
+    db.add_seconds(window.conn, task_id, date_mod.today().isoformat(), 3.75 * 3600)
+    window._update_target_bar()
+    assert window.target_bar.value() == 50
+    assert window.today_total() == 3.75 * 3600
+
+
+def test_sync_now_pulls_other_machine_into_open_window(make_window, tmp_path):
+    from timetracker import sync as sync_mod
+
+    sync_dir = tmp_path / "dropbox"
+    other = db.connect(tmp_path / "other.db")
+    task = db.create_task(other, "From the winbox")
+    db.add_seconds(other, task, "2026-07-19", 900, "winbox")
+    # publish the other machine's snapshot under its own name
+    sync_dir.mkdir()
+    import sqlite3 as sqlite3_mod
+    dest = sqlite3_mod.connect(str(sync_dir / "timetracker-winbox.db"))
+    other.backup(dest)
+    dest.close()
+    other.close()
+
+    window = make_window(tmp_path / "local.db")
+    db.set_setting(window.conn, "sync_dir", str(sync_dir))
+    stats = window.sync_now()
+    assert stats["tasks_added"] == 1
+    assert task in window.rows  # merged task appeared in the UI live
+    assert db.seconds_for_day(window.conn, task, "2026-07-19") == 900
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)

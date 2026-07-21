@@ -63,6 +63,10 @@ def ensure_timetracker_tables(conn: sqlite3.Connection) -> None:
             seconds    REAL NOT NULL DEFAULT 0,
             PRIMARY KEY (task_id, entry_date, origin)
         );
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         """
     )
     # Migration for databases created before mini-mode existed
@@ -208,6 +212,29 @@ def entries_between(
         (first_date, last_date),
     )
     return {(r["task_id"], r["entry_date"]): float(r["s"]) for r in rows}
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str = "") -> str:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?)"
+        " ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
+def seconds_for_day_all_tasks(conn: sqlite3.Connection, entry_date: str) -> float:
+    """Total across every task for a date (all origins) — daily-target math."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(seconds), 0) AS s FROM time_entries WHERE entry_date = ?",
+        (entry_date,),
+    ).fetchone()
+    return float(row["s"])
 
 
 def merge_from(conn: sqlite3.Connection, other: sqlite3.Connection) -> dict[str, int]:

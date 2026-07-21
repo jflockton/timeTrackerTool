@@ -9,17 +9,21 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from importlib.resources import files
+from pathlib import Path
 
 from PySide6.QtCore import QLockFile, QRectF, Qt, QTimer
 from PySide6.QtGui import QAction, QFontMetrics, QIcon, QPainter, QPen, QColor, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -29,20 +33,29 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSystemTrayIcon,
     QTableWidget,
     QTableWidgetItem,
+    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from . import db
+from . import autostart, db, sync
 from .core import TimerEngine, format_hms, split_span_by_date
 from .idle import IDLE_THRESHOLD_S, IdleWatcher, system_idle_seconds
-from .report import build_month_report, build_week_report, month_dates, to_csv, week_dates
+from .report import (
+    build_month_report,
+    build_week_report,
+    month_dates,
+    to_csv,
+    to_markdown,
+    week_dates,
+)
 
 TICK_MS = 1000
 FLUSH_EVERY_TICKS = 10
@@ -56,6 +69,20 @@ FLASH_INTERVAL_MS = 90
 IDLE_CHECK_EVERY_TICKS = 5
 # Single-instance local-socket name (per-user)
 INSTANCE_SERVER = f"timeTrackerTool-{os.environ.get('USER') or os.environ.get('USERNAME') or 'user'}"
+# Settings defaults (stored in the settings table once changed)
+DEFAULT_TARGET_HOURS = "7.5"
+DEFAULT_NUDGE_STOP = "18:30"
+DEFAULT_NUDGE_START = "09:30"
+DEFAULT_OBSIDIAN_DIR = "~/Dropbox/obsidianVault/00 - Inbox"
+NUDGE_CHECK_EVERY_TICKS = 30
+
+
+def _parse_hhmm(value: str) -> dtime | None:
+    try:
+        hours, minutes = value.split(":")
+        return dtime(int(hours), int(minutes))
+    except (ValueError, AttributeError):
+        return None
 
 # Quick-pick emoji for the Set emoji dialog (any emoji can still be typed)
 EMOJI_CHOICES = [
@@ -368,6 +395,120 @@ class MiniWindow(QWidget):
         super().closeEvent(event)
 
 
+class SettingsDialog(QDialog):
+    """Sync folder, launch at login, daily target, nudges, Obsidian folder."""
+
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__(window)
+        self.window = window
+        conn = window.conn
+        self.setWindowTitle("Settings")
+        form = QFormLayout(self)
+
+        self.sync_edit = QLineEdit(db.get_setting(conn, "sync_dir", ""))
+        self.sync_edit.setPlaceholderText("e.g. ~/Dropbox/timeTrackerSync (empty = off)")
+        sync_browse = QPushButton("Browse…")
+        sync_browse.clicked.connect(lambda: self._browse(self.sync_edit))
+        sync_now = QPushButton("Sync now")
+        sync_now.clicked.connect(self._sync_now)
+        sync_row = QHBoxLayout()
+        sync_row.addWidget(self.sync_edit, stretch=1)
+        sync_row.addWidget(sync_browse)
+        sync_row.addWidget(sync_now)
+        form.addRow("🔀 Sync folder:", sync_row)
+
+        self.login_check = QCheckBox("Start timeTrackerTool when I log in")
+        self.login_check.setChecked(autostart.is_enabled())
+        form.addRow("🚀 Autostart:", self.login_check)
+
+        self.target_spin = QDoubleSpinBox()
+        self.target_spin.setRange(0.0, 24.0)
+        self.target_spin.setSingleStep(0.5)
+        self.target_spin.setSuffix(" h")
+        self.target_spin.setSpecialValueText("off")
+        self.target_spin.setValue(
+            float(db.get_setting(conn, "target_hours", DEFAULT_TARGET_HOURS)))
+        form.addRow("🎯 Daily target:", self.target_spin)
+
+        self.nudge_stop_check = QCheckBox("Nudge if a timer is still running after")
+        self.nudge_stop_time = QTimeEdit()
+        stop_setting = db.get_setting(conn, "nudge_stop_time", DEFAULT_NUDGE_STOP)
+        self.nudge_stop_check.setChecked(bool(stop_setting))
+        parsed = _parse_hhmm(stop_setting or DEFAULT_NUDGE_STOP)
+        self.nudge_stop_time.setTime(parsed if parsed else dtime(18, 30))
+        stop_row = QHBoxLayout()
+        stop_row.addWidget(self.nudge_stop_check)
+        stop_row.addWidget(self.nudge_stop_time)
+        form.addRow("🌙 Evening:", stop_row)
+
+        self.nudge_start_check = QCheckBox("Nudge if nothing is tracked by")
+        self.nudge_start_time = QTimeEdit()
+        start_setting = db.get_setting(conn, "nudge_start_time", DEFAULT_NUDGE_START)
+        self.nudge_start_check.setChecked(bool(start_setting))
+        parsed = _parse_hhmm(start_setting or DEFAULT_NUDGE_START)
+        self.nudge_start_time.setTime(parsed if parsed else dtime(9, 30))
+        start_row = QHBoxLayout()
+        start_row.addWidget(self.nudge_start_check)
+        start_row.addWidget(self.nudge_start_time)
+        form.addRow("🌅 Morning:", start_row)
+
+        self.obsidian_edit = QLineEdit(
+            db.get_setting(conn, "obsidian_dir", DEFAULT_OBSIDIAN_DIR))
+        obsidian_browse = QPushButton("Browse…")
+        obsidian_browse.clicked.connect(lambda: self._browse(self.obsidian_edit))
+        obsidian_row = QHBoxLayout()
+        obsidian_row.addWidget(self.obsidian_edit, stretch=1)
+        obsidian_row.addWidget(obsidian_browse)
+        form.addRow("🧠 Obsidian folder:", obsidian_row)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.save)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def _browse(self, edit: QLineEdit) -> None:
+        start = str(Path(edit.text()).expanduser()) if edit.text() else str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, "Choose folder", start)
+        if folder:
+            edit.setText(folder)
+
+    def _sync_now(self) -> None:
+        db.set_setting(self.window.conn, "sync_dir", self.sync_edit.text().strip())
+        stats = self.window.sync_now()
+        if stats is None:
+            QMessageBox.warning(self, "Sync", "Set a valid sync folder first.")
+        else:
+            QMessageBox.information(
+                self, "Sync",
+                f"Merged {stats['files']} other machine file(s): "
+                f"{stats['tasks_added']} new task(s), "
+                f"{stats['entries_merged']} entrie(s) updated.\n"
+                "This machine's snapshot has been published.")
+
+    def save(self) -> None:
+        conn = self.window.conn
+        db.set_setting(conn, "sync_dir", self.sync_edit.text().strip())
+        db.set_setting(conn, "target_hours", str(self.target_spin.value()))
+        db.set_setting(conn, "nudge_stop_time",
+                       self.nudge_stop_time.time().toString("HH:mm")
+                       if self.nudge_stop_check.isChecked() else "")
+        db.set_setting(conn, "nudge_start_time",
+                       self.nudge_start_time.time().toString("HH:mm")
+                       if self.nudge_start_check.isChecked() else "")
+        db.set_setting(conn, "obsidian_dir", self.obsidian_edit.text().strip())
+        try:
+            if self.login_check.isChecked():
+                autostart.enable()
+            else:
+                autostart.disable()
+        except Exception as exc:  # registry/plist hiccups shouldn't eat settings
+            QMessageBox.warning(self, "Autostart", f"Couldn't update autostart: {exc}")
+        self.window.apply_settings()
+        self.accept()
+
+
 class ArchivedTasksDialog(QDialog):
     """Manage archived tasks: restore them, or delete them forever
     (task + all logged time, behind a confirmation)."""
@@ -477,6 +618,9 @@ class WeekReportDialog(QDialog):
         self.mode_btn.clicked.connect(self.toggle_mode)
         export_btn = QPushButton("Export CSV…")
         export_btn.clicked.connect(self.export_csv)
+        obsidian_btn = QPushButton("→ Obsidian")
+        obsidian_btn.setToolTip("Save this view as a markdown note in the vault")
+        obsidian_btn.clicked.connect(self.export_obsidian)
 
         nav = QHBoxLayout()
         nav.addWidget(self.prev_btn)
@@ -484,6 +628,7 @@ class WeekReportDialog(QDialog):
         nav.addWidget(self.next_btn)
         nav.addWidget(self.mode_btn)
         nav.addWidget(export_btn)
+        nav.addWidget(obsidian_btn)
 
         self.table = QTableWidget()
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -513,6 +658,28 @@ class WeekReportDialog(QDialog):
         if self.mode == "week":
             return build_week_report(self.window.conn, self.anchor)
         return build_month_report(self.window.conn, self.anchor)
+
+    def _period_label(self) -> str:
+        if self.mode == "week":
+            days = week_dates(self.anchor)
+            return f"Week of {days[0].strftime('%d %b %Y')}"
+        return self.anchor.strftime("%B %Y")
+
+    def export_obsidian(self) -> None:
+        folder = Path(db.get_setting(
+            self.window.conn, "obsidian_dir", DEFAULT_OBSIDIAN_DIR)).expanduser()
+        if not folder.is_dir():
+            QMessageBox.warning(
+                self, "Obsidian export",
+                f"Folder not found:\n{folder}\n\nSet it in Settings (⚙) first.")
+            return
+        self.window.flush_now()
+        label = self._period_label()
+        note = to_markdown(self._current_report(), label)
+        filename = f"{date.today().isoformat()}_timeTracker {label}.md"
+        path = folder / filename
+        path.write_text(note, encoding="utf-8")
+        QMessageBox.information(self, "Obsidian export", f"Saved:\n{path}")
 
     def export_csv(self) -> None:
         if self.mode == "week":
@@ -615,20 +782,31 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(rows_host)
 
-        report_btn = QPushButton("Weekly report")
+        report_btn = QPushButton("Reports")
         report_btn.clicked.connect(self.show_report)
         archived_btn = QPushButton("Archived…")
         archived_btn.setToolTip("Restore or permanently delete archived tasks")
         archived_btn.clicked.connect(lambda: ArchivedTasksDialog(self).exec())
+        settings_btn = QPushButton("⚙")
+        settings_btn.setFixedWidth(36)
+        settings_btn.setToolTip("Settings: sync, autostart, daily target, nudges")
+        settings_btn.clicked.connect(lambda: SettingsDialog(self).exec())
         bottom = QHBoxLayout()
         bottom.addWidget(report_btn, stretch=1)
         bottom.addWidget(archived_btn)
+        bottom.addWidget(settings_btn)
+
+        # Daily target progress ("1UP" bar); hidden when target is off
+        self.target_bar = QProgressBar()
+        self.target_bar.setRange(0, 100)
+        self.target_bar.setTextVisible(True)
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addWidget(self.banner)
         layout.addLayout(top)
         layout.addWidget(scroll, stretch=1)
+        layout.addWidget(self.target_bar)
         layout.addLayout(bottom)
         self.setCentralWidget(central)
 
@@ -642,6 +820,11 @@ class MainWindow(QMainWindow):
             self.tray.activated.connect(self._tray_activated)
             self._rebuild_tray_menu()
             self.tray.show()
+
+        self._nudged_stop: date | None = None
+        self._nudged_start: date | None = None
+        self.apply_settings()
+        self.sync_now()  # pull other machines' history on startup (if configured)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -728,6 +911,10 @@ class MainWindow(QMainWindow):
             self.flush_now()
         if self._tick_count % IDLE_CHECK_EVERY_TICKS == 0:
             self._check_idle()
+        if self._tick_count % NUDGE_CHECK_EVERY_TICKS == 0:
+            self._nudge_check(datetime.now())
+        if self.target_hours > 0:
+            self._update_target_bar()
         if self.tray is not None:
             self._update_tray_state()
         if date.today() != self._today:
@@ -741,6 +928,88 @@ class MainWindow(QMainWindow):
             self.rows[self.engine.running_task].refresh()
         if self.mini is not None and self.mini.isVisible():
             self.mini.refresh()
+
+    # --- settings / sync / target / nudges --------------------------------
+
+    def apply_settings(self) -> None:
+        self.target_hours = float(
+            db.get_setting(self.conn, "target_hours", DEFAULT_TARGET_HOURS))
+        self.target_bar.setVisible(self.target_hours > 0)
+        self._update_target_bar()
+
+    def today_total(self) -> float:
+        """All tasks' seconds today, including the running timer's live span."""
+        today = date.today().isoformat()
+        total = db.seconds_for_day_all_tasks(self.conn, today)
+        running = self.engine.running_task
+        if running is not None:
+            total += self.engine.pending_seconds(running, today, datetime.now())
+        return total
+
+    def _update_target_bar(self) -> None:
+        if self.target_hours <= 0:
+            return
+        total = self.today_total()
+        target = self.target_hours * 3600
+        percent = min(100, int(total / target * 100))
+        self.target_bar.setValue(percent)
+        if total >= target:
+            self.target_bar.setFormat(
+                f"🏆 {format_hms(total)} / {format_hms(target)} — HI-SCORE BEATEN!")
+        else:
+            self.target_bar.setFormat(
+                f"🎯 {format_hms(total)} / {format_hms(target)} today (%p%)")
+
+    def sync_now(self) -> dict | None:
+        """Folder sync (if configured): import other machines, publish ours."""
+        sync_dir = db.get_setting(self.conn, "sync_dir", "")
+        if not sync_dir:
+            return None
+        path = Path(sync_dir).expanduser()
+        if not path.is_dir():
+            return None
+        self.flush_now()
+        stats = sync.sync(self.conn, path)
+        if stats["entries_merged"] or stats["tasks_added"]:
+            # another machine's history arrived — rebuild what's visible
+            for task in db.list_tasks(self.conn):
+                if task["task_id"] not in self.rows:
+                    self._add_row(task["task_id"], task["name"], task["emoji"])
+            for row in self.rows.values():
+                row.refresh()
+            if self.mini is not None:
+                self.mini.rebuild()
+                self.mini.refresh()
+        return stats
+
+    def _nudge_check(self, now: datetime) -> list[str]:
+        """Once-per-day reminders. Returns which nudges fired (for tests)."""
+        fired = []
+        today = now.date()
+        stop_at = _parse_hhmm(db.get_setting(self.conn, "nudge_stop_time",
+                                             DEFAULT_NUDGE_STOP))
+        if (stop_at and self.engine.running_task is not None
+                and now.time() >= stop_at and self._nudged_stop != today):
+            self._nudged_stop = today
+            fired.append("stop")
+            name = self.rows[self.engine.running_task].name \
+                if self.engine.running_task in self.rows else "a task"
+            self._notify("Still tracking?",
+                         f"'{name}' is still running — end of day?")
+        start_at = _parse_hhmm(db.get_setting(self.conn, "nudge_start_time",
+                                              DEFAULT_NUDGE_START))
+        if (start_at and self.engine.running_task is None
+                and now.time() >= start_at and self._nudged_start != today
+                and self.today_total() == 0):
+            self._nudged_start = today
+            fired.append("start")
+            self._notify("Nothing tracked yet",
+                         "The working day has started — insert coin?")
+        return fired
+
+    def _notify(self, title: str, message: str) -> None:
+        if self.tray is not None:
+            self.tray.showMessage(title, message, app_icon())
 
     # --- system tray ------------------------------------------------------
 
@@ -904,6 +1173,10 @@ class MainWindow(QMainWindow):
             self.tray.hide()
         self.engine.stop(datetime.now())
         self.flush_now()
+        try:
+            self.sync_now()  # publish final state to the sync folder
+        except Exception:
+            pass  # a broken sync folder must never block shutdown
         self.conn.close()
 
     def closeEvent(self, event) -> None:
