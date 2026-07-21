@@ -673,6 +673,59 @@ def test_bare_ok_on_icon_task_keeps_the_icon(qapp, monkeypatch):
     qapp.processEvents()
 
 
+def test_notion_library_loads_renders_and_tints(qapp):
+    from timetracker import icons
+    from timetracker.app import apply_theme
+
+    names = icons.notion_names()
+    assert len(names) > 800  # the whole set came across
+    assert "cog-arcade" in names  # our own cog rides along
+    assert "gear" in names
+
+    token = f"{icons.NOTION_PREFIX}alien-pixel"
+    assert icons.is_notion(token) and icons.is_custom(token)
+    assert not icons.is_icon(token)
+    assert icons.label(token) == "Alien Pixel"
+
+    apply_theme("dark")
+    dark_pm = icons.pixmap(token, 32).toImage()
+    apply_theme("light")
+    light_pm = icons.pixmap(token, 32).toImage()
+    apply_theme("")
+
+    def opaque_lightnesses(image):
+        return [image.pixelColor(x, y).lightness()
+                for x in range(image.width()) for y in range(image.height())
+                if image.pixelColor(x, y).alpha() > 200]
+
+    assert min(opaque_lightnesses(light_pm)) < 60   # black-ish on light
+    assert max(opaque_lightnesses(dark_pm)) > 200   # white-ish on dark
+
+
+def test_notion_tab_search_filters_and_chooses(qapp):
+    from timetracker import icons
+
+    dialog = EmojiPickerDialog(None, "Alpha", "")
+    total = dialog.notion_list.count()
+    assert total == len(icons.notion_names())
+
+    dialog.notion_search.setText("alien")
+    visible = [dialog.notion_list.item(i) for i in range(total)
+               if not dialog.notion_list.item(i).isHidden()]
+    assert 0 < len(visible) < 20
+    assert all("alien" in i.data(Qt.ItemDataRole.UserRole) for i in visible)
+
+    dialog.notion_search.setText("")
+    assert sum(1 for i in range(total)
+               if not dialog.notion_list.item(i).isHidden()) == total
+
+    dialog._choose_icon(f"{icons.NOTION_PREFIX}alien")
+    assert dialog.result() == 1
+    assert dialog.edit.text() == f"{icons.NOTION_PREFIX}alien"
+    dialog.deleteLater()
+    qapp.processEvents()
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)

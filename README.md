@@ -41,14 +41,19 @@ judgmental.
   scale with the window; make it big enough and each button also shows
   today's tracked time.
 - 🎨 **Task icons (or emoji)** — right-click → **Set icon…** opens a
-  two-tab picker. The Icons tab has 64 built-in, code-drawn icons — 16
+  three-tab picker. The Icons tab has 64 built-in, code-drawn icons — 16
   kinds covering the IT working week (coding `</>`, documentation,
   project work, meetings, calls/headset, email, support/helpdesk,
   networking, security, servers, terminal, debugging, database, cloud,
   monitoring, admin/config), each in four colours so similar tasks stay
   distinguishable; one click picks. They render at the exact size and
   screen DPI wherever they appear, so they stay as crisp as emoji at any
-  scale. The Emoji tab keeps the quick-pick grid of 32 plus a
+  scale.
+- 🗂️ **The Library tab** — 885 monochrome icons from the free **Notion
+  icon set** (via [files2notion.com](https://www.files2notion.com/free-tools/icons)
+  — credit to Notion for the artwork), searchable by name, tinted live to
+  match the theme: black in light mode, white in dark. Plus a bonus
+  `cog-arcade` drawn in-house to match. Hover any icon for its name. The Emoji tab keeps the quick-pick grid of 32 plus a
   type-anything field (the OS emoji palette works in it too: ⌃⌘Space on
   macOS, Win+. on Windows). Icons show on the task cards, mini-mode
   buttons, tray menu, and the cube side-mapping dropdowns.
@@ -371,6 +376,17 @@ machine, so merging is repeat-safe.
 **What happens if I wander off with a timer running?**
 After 5 idle minutes, the app notices. When you come back it asks whether
 the away time was real work (thinking counts!) or should be discarded.
+
+---
+
+## 🙏 Credits
+
+- **Notion** — the Library tab's monochrome icon set is the free Notion
+  icon collection, obtained via
+  [files2notion.com](https://www.files2notion.com/free-tools/icons).
+  Thank you for making it freely available.
+- Everything else on screen — banner, app icon, coloured task icons —
+  is drawn in code by `scripts/make_assets.py` and `icons.py`.
 
 ---
 

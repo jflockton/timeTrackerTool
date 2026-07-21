@@ -13,7 +13,7 @@ from datetime import date, datetime, time as dtime, timedelta
 from importlib.resources import files
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QRectF, Qt, QTimer
+from PySide6.QtCore import QLockFile, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QFontMetrics, QIcon, QPainter, QPen, QColor
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -31,6 +31,8 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -303,7 +305,7 @@ class TaskRow(QFrame):
         seconds = self.window.today_seconds(self.task_id)
         self.button.setText("■ Stop" if running else "▶ Start")
         self.button.setChecked(running)
-        if icons.is_icon(self.emoji):
+        if icons.is_custom(self.emoji):
             self.icon_label.setPixmap(
                 icons.pixmap(self.emoji, 22, self.devicePixelRatioF()))
             self.icon_label.show()
@@ -327,9 +329,10 @@ class TaskRow(QFrame):
 
 class EmojiPickerDialog(QDialog):
     """Pick a task icon: a code-drawn icon from the Icons tab (coding, docs,
-    project work, meetings, calls, email — four colours each), or any emoji
-    from the Emoji tab. Clicking an icon chooses it immediately; the emoji
-    tab keeps the type-anything field and OK button."""
+    project work, meetings, calls, email — four colours each), a monochrome
+    icon from the searchable Library tab (the free Notion set — tinted to
+    the theme), or any emoji from the Emoji tab. Clicking an icon chooses
+    it immediately; the emoji tab keeps the type-anything field and OK."""
 
     def __init__(self, parent: QWidget | None, task_name: str, current: str) -> None:
         super().__init__(parent)
@@ -362,12 +365,46 @@ class EmojiPickerDialog(QDialog):
         icon_hint = QLabel("Click an icon to use it.")
         icon_hint.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
         icons_layout.addWidget(icon_hint)
+        icons_layout.addStretch()
         tabs.addTab(icons_page, "Icons")
+
+        # --- Library tab: the Notion monochrome set, searchable -------------
+        # Free Notion icon library via files2notion.com, tinted at render
+        # time to follow the theme (white in dark mode, black in light).
+        # No captions under the icons — hover for the name.
+        library_page = QWidget()
+        library_layout = QVBoxLayout(library_page)
+        self.notion_search = QLineEdit()
+        self.notion_search.setPlaceholderText(
+            f"Search {len(icons.notion_names())} icons…")
+        self.notion_search.setClearButtonEnabled(True)
+        library_layout.addWidget(self.notion_search)
+        self.notion_list = QListWidget()
+        self.notion_list.setViewMode(QListWidget.ViewMode.IconMode)
+        self.notion_list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.notion_list.setMovement(QListWidget.Movement.Static)
+        self.notion_list.setUniformItemSizes(True)
+        self.notion_list.setIconSize(QSize(30, 30))
+        self.notion_list.setGridSize(QSize(42, 42))
+        self.notion_list.setMinimumSize(420, 300)
+        dpr = self.devicePixelRatioF()
+        for name in icons.notion_names():
+            token = f"{icons.NOTION_PREFIX}{name}"
+            item = QListWidgetItem()
+            item.setIcon(QIcon(icons.pixmap(token, 30, dpr)))
+            item.setToolTip(icons.label(token))
+            item.setData(Qt.ItemDataRole.UserRole, token)
+            self.notion_list.addItem(item)
+        self.notion_list.itemClicked.connect(
+            lambda item: self._choose_icon(item.data(Qt.ItemDataRole.UserRole)))
+        self.notion_search.textChanged.connect(self._filter_notion)
+        library_layout.addWidget(self.notion_list, stretch=1)
+        tabs.addTab(library_page, "Library")
 
         # --- Emoji tab: the classic grid + type-anything field --------------
         emoji_page = QWidget()
         emoji_layout = QVBoxLayout(emoji_page)
-        self.edit = QLineEdit("" if icons.is_icon(current) else current)
+        self.edit = QLineEdit("" if icons.is_custom(current) else current)
         self.edit.setPlaceholderText("…or type/paste any emoji here")
 
         self.grid_buttons: list[QPushButton] = []
@@ -396,8 +433,11 @@ class EmojiPickerDialog(QDialog):
         emoji_layout.addWidget(hint_label)
         tabs.addTab(emoji_page, "Emoji")
 
-        if not icons.is_icon(current) and current:
-            tabs.setCurrentIndex(1)  # open on the tab matching the current pick
+        # Open on the tab matching the current pick
+        if icons.is_notion(current):
+            tabs.setCurrentIndex(1)
+        elif current and not icons.is_custom(current):
+            tabs.setCurrentIndex(2)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -410,12 +450,19 @@ class EmojiPickerDialog(QDialog):
         self.edit.setText(token)
         self.accept()
 
+    def _filter_notion(self, text: str) -> None:
+        needle = text.strip().lower().replace(" ", "-")
+        for i in range(self.notion_list.count()):
+            item = self.notion_list.item(i)
+            token = item.data(Qt.ItemDataRole.UserRole)
+            item.setHidden(bool(needle) and needle not in token)
+
     @staticmethod
     def get_emoji(parent: QWidget | None, task_name: str, current: str) -> tuple[str, bool]:
         dialog = EmojiPickerDialog(parent, task_name, current)
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
         text = dialog.edit.text()
-        if accepted and not text.strip() and icons.is_icon(current):
+        if accepted and not text.strip() and icons.is_custom(current):
             # The field starts blank for icon tasks; a bare OK means
             # "no change", not "remove my icon".
             text = current
@@ -485,7 +532,7 @@ class MiniTaskButton(QPushButton):
         text_zone = 30 if show_time else 15
         emoji_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height() - text_zone)
         token = self.emoji()
-        if icons.is_icon(token):
+        if icons.is_custom(token):
             # Render at the exact size (and DPR) needed — scaling a fixed
             # bitmap here is what made icons look blocky next to emoji.
             side = max(12, int(min(emoji_rect.width(), emoji_rect.height()) * 0.8))
@@ -608,7 +655,7 @@ class CubeSettingsDialog(QDialog):
             combo.addItem("— stop timer —", "")
             current = db.get_setting(conn, f"cube_side_{side}", "")
             for task in tasks:
-                if icons.is_icon(task["emoji"]):
+                if icons.is_custom(task["emoji"]):
                     combo.addItem(icons.qicon(task["emoji"]), task["name"],
                                   task["task_id"])
                 else:
@@ -841,7 +888,7 @@ class ArchivedTasksDialog(QDialog):
             row = QWidget()
             box = QHBoxLayout(row)
             box.setContentsMargins(4, 2, 4, 2)
-            if icons.is_icon(task["emoji"]):
+            if icons.is_custom(task["emoji"]):
                 title = task["name"]  # the raw icon:… token is not for humans
             elif task["emoji"]:
                 title = f"{task['emoji']} {task['name']}"
@@ -1288,6 +1335,11 @@ class MainWindow(QMainWindow):
         self.banner.set_animated(
             db.get_setting(self.conn, "banner_animated", "1") == "1")
         apply_theme(db.get_setting(self.conn, "theme", ""))
+        # Notion-library icons are tinted to the theme — re-render the card
+        # chips and tray icons so they flip black/white with the palette.
+        for row in self.rows.values():
+            row.refresh()
+        self._rebuild_tray_menu()
         self._apply_cube_setting()
 
     # --- Timeular cube ----------------------------------------------------
@@ -1443,7 +1495,7 @@ class MainWindow(QMainWindow):
         menu = QMenu()
         self.tray_task_actions = {}
         for task_id, row in self.rows.items():
-            if icons.is_icon(row.emoji):
+            if icons.is_custom(row.emoji):
                 action = QAction(icons.qicon(row.emoji), row.name, menu)
             else:
                 label = f"{row.emoji} {row.name}" if row.emoji else row.name

@@ -12,9 +12,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from importlib.resources import files
+
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QColor,
+    QGuiApplication,
     QIcon,
     QLinearGradient,
     QPainter,
@@ -24,6 +27,9 @@ from PySide6.QtGui import (
 )
 
 PREFIX = "icon:"
+# The monochrome Notion icon library (free set via files2notion.com) —
+# tinted black or white at render time to follow the app theme.
+NOTION_PREFIX = "notion:"
 
 COLOURS = {
     "blue": "#3b82f6",
@@ -62,6 +68,31 @@ def is_icon(token: str) -> bool:
     return token.startswith(PREFIX)
 
 
+def is_notion(token: str) -> bool:
+    return token.startswith(NOTION_PREFIX)
+
+
+def is_custom(token: str) -> bool:
+    """Any non-emoji icon token (coloured tile or Notion monochrome)."""
+    return is_icon(token) or is_notion(token)
+
+
+@lru_cache(maxsize=1)
+def notion_names() -> tuple[str, ...]:
+    """All bundled Notion-library icon names, sorted."""
+    folder = files("timetracker") / "assets" / "notion_icons"
+    return tuple(sorted(
+        entry.name[:-4] for entry in folder.iterdir()
+        if entry.name.endswith(".svg")))
+
+
+def _dark_ui() -> bool:
+    app = QGuiApplication.instance()
+    if app is None:
+        return False
+    return app.palette().window().color().lightness() < 128
+
+
 def parse(token: str) -> tuple[str, str]:
     """'icon:code-blue' -> ('code', 'blue'); unknown parts fall back safely."""
     body = token[len(PREFIX):]
@@ -74,6 +105,8 @@ def parse(token: str) -> tuple[str, str]:
 
 
 def label(token: str) -> str:
+    if is_notion(token):
+        return token[len(NOTION_PREFIX):].replace("-", " ").title()
     kind, colour = parse(token)
     return f"{KIND_NAMES[kind]} ({colour})"
 
@@ -363,15 +396,23 @@ _PAINTERS = {
 }
 
 
-@lru_cache(maxsize=512)
 def pixmap(token: str, size: int, dpr: float = 1.0) -> QPixmap:
     """Render an icon token at the given logical size (cached per size).
 
     Everything is vector-drawn, so always render at the exact size needed —
     never scale a pixmap afterwards, that's what looks blocky next to
     text-rendered emoji. Pass the target widget's devicePixelRatioF() so
-    high-DPI displays get a full-resolution render too.
-    """
+    high-DPI displays get a full-resolution render too. Notion-library
+    icons are tinted to the current theme (white on dark, black on light),
+    so the cache key includes the tint."""
+    dark = _dark_ui() if is_notion(token) else False
+    return _render(token, size, dpr, dark)
+
+
+@lru_cache(maxsize=2048)
+def _render(token: str, size: int, dpr: float, dark: bool) -> QPixmap:
+    if is_notion(token):
+        return _render_notion(token[len(NOTION_PREFIX):], size, dpr, dark)
     kind, colour = parse(token)
     base = QColor(COLOURS[colour])
     px = max(1, int(round(size * dpr)))
@@ -389,6 +430,29 @@ def pixmap(token: str, size: int, dpr: float = 1.0) -> QPixmap:
     p.setBrush(gradient)
     p.drawRoundedRect(rect, px * 0.22, px * 0.22)
     _PAINTERS[kind](p, rect, QColor("white"), base)
+    p.end()
+    canvas.setDevicePixelRatio(dpr)
+    return canvas
+
+
+def _render_notion(name: str, size: int, dpr: float, dark: bool) -> QPixmap:
+    """Render a Notion-library SVG tinted to a single colour: near-white on
+    a dark theme, near-black on a light one."""
+    from PySide6.QtSvg import QSvgRenderer
+
+    try:
+        data = (files("timetracker") / "assets" / "notion_icons"
+                / f"{name}.svg").read_bytes()
+    except (FileNotFoundError, OSError):
+        data = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"/>'
+    px = max(1, int(round(size * dpr)))
+    canvas = QPixmap(px, px)
+    canvas.fill(Qt.GlobalColor.transparent)
+    p = QPainter(canvas)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    QSvgRenderer(data).render(p, QRectF(0, 0, px, px))
+    p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    p.fillRect(0, 0, px, px, QColor("#f2f2f2" if dark else "#161616"))
     p.end()
     canvas.setDevicePixelRatio(dpr)
     return canvas
