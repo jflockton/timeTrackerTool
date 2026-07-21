@@ -25,13 +25,12 @@ because you can only actually do one thing at a time (controversial, we know).
 ## 📸 What it looks like
 
 <p align="center">
-  <img src="docs/main_window.png" alt="Main window: arcade banner, task cards, one running task highlighted orange" width="440">
+  <img src="docs/main_window.png" alt="Main window: TIME TRACKER text logo, task cards with coloured icons, the running task highlighted orange" width="440">
 </p>
 
 Each task lives in its own card. The running task glows orange and its
-"today" total ticks up live. (Screenshots show the optional arcade
-banner; out of the box v2 wears the quieter **TIME TRACKER** text logo —
-the invaders are one Settings dropdown away.)
+"today" total ticks up live. That's the default **TIME TRACKER** text
+logo up top — the arcade invaders are one Settings dropdown away.
 
 ## ✨ Features (many, many, many of them)
 
@@ -66,8 +65,8 @@ the invaders are one Settings dropdown away.)
   shows on the task cards, mini-mode buttons, tray menu, and the cube
   side-mapping dropdowns.
 
-  <img src="docs/mini_compact.png" alt="Mini mode, compact: emoji only" height="72">
-  <img src="docs/mini_expanded.png" alt="Mini mode, enlarged: emoji plus task name and time" height="150">
+  <img src="docs/mini_compact.png" alt="Mini mode, compact: icon buttons with short labels" height="72">
+  <img src="docs/mini_expanded.png" alt="Mini mode, enlarged: icons plus task name and today's time" height="150">
 - ⏱️ **Cumulative daily timers** — every click adds to *today's* total for
   that task, displayed live to the second.
 - 🎯 **Single-active tracking** — starting a task stops the running one. No
@@ -400,8 +399,8 @@ before anyone sits at the Windows box.
 - [x] 🕹️ TIME TRACKER text logo as the default banner (arcade optional)
 - [x] 📬 Python-free distribution: shareable zip installer + tag-triggered
   GitHub Releases
+- [x] 📸 Refresh the README screenshots for the v2 look
 - [ ] ✍️ Code-sign the builds so SmartScreen/Gatekeeper stop grumbling
-- [ ] 📸 Refresh the README screenshots for the v2 look
 
 ## ❓ FAQ
 
