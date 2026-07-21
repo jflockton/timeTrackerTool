@@ -122,6 +122,10 @@ QFrame#taskCard QLabel { border: none; background: transparent; }
 
 THEME_CHOICES = [("", "System default"), ("light", "Light"), ("dark", "Dark")]
 
+# The OS-provided palette, captured the first time a theme is applied so
+# "System default" can restore it after a forced light/dark palette.
+_system_palette = None
+
 
 def scheme_for_theme(theme: str) -> Qt.ColorScheme:
     """Map the stored theme setting to a Qt colour scheme; anything
@@ -130,10 +134,72 @@ def scheme_for_theme(theme: str) -> Qt.ColorScheme:
             "dark": Qt.ColorScheme.Dark}.get(theme, Qt.ColorScheme.Unknown)
 
 
+def _palette_for_theme(theme: str) -> "QPalette":
+    """Explicit palettes for the forced modes. setColorScheme alone is not
+    enough — with the default Windows style it leaves the palette untouched
+    (verified), so the task area kept the old colours when the OS and the
+    chosen theme disagreed."""
+    from PySide6.QtGui import QPalette
+
+    palette = QPalette()
+    if theme == "dark":
+        colours = {
+            QPalette.ColorRole.Window: "#2b2b2b",
+            QPalette.ColorRole.WindowText: "#f0f0f0",
+            QPalette.ColorRole.Base: "#232323",
+            QPalette.ColorRole.AlternateBase: "#2b2b2b",
+            QPalette.ColorRole.ToolTipBase: "#2b2b2b",
+            QPalette.ColorRole.ToolTipText: "#f0f0f0",
+            QPalette.ColorRole.Text: "#f0f0f0",
+            QPalette.ColorRole.Button: "#333333",
+            QPalette.ColorRole.ButtonText: "#f0f0f0",
+            QPalette.ColorRole.BrightText: "#ff5555",
+            QPalette.ColorRole.Link: "#60a5fa",
+            QPalette.ColorRole.Highlight: "#2a82da",
+            QPalette.ColorRole.HighlightedText: "#ffffff",
+            QPalette.ColorRole.PlaceholderText: "#909090",
+        }
+        disabled_text = "#7f7f7f"
+    else:
+        colours = {
+            QPalette.ColorRole.Window: "#efefef",
+            QPalette.ColorRole.WindowText: "#1a1a1a",
+            QPalette.ColorRole.Base: "#ffffff",
+            QPalette.ColorRole.AlternateBase: "#f3f4f6",
+            QPalette.ColorRole.ToolTipBase: "#ffffdc",
+            QPalette.ColorRole.ToolTipText: "#1a1a1a",
+            QPalette.ColorRole.Text: "#1a1a1a",
+            QPalette.ColorRole.Button: "#e7e7e7",
+            QPalette.ColorRole.ButtonText: "#1a1a1a",
+            QPalette.ColorRole.BrightText: "#d92626",
+            QPalette.ColorRole.Link: "#1d4ed8",
+            QPalette.ColorRole.Highlight: "#2a82da",
+            QPalette.ColorRole.HighlightedText: "#ffffff",
+            QPalette.ColorRole.PlaceholderText: "#8a8a8a",
+        }
+        disabled_text = "#a0a0a0"
+    for role, colour in colours.items():
+        palette.setColor(role, QColor(colour))
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text,
+                 QPalette.ColorRole.ButtonText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role,
+                         QColor(disabled_text))
+    return palette
+
+
 def apply_theme(theme: str) -> None:
     """Switch the whole app between light / dark / follow-the-OS. The card
     styling uses translucent colours, so it reads fine on both palettes."""
-    QApplication.styleHints().setColorScheme(scheme_for_theme(theme))
+    global _system_palette
+    app = QApplication.instance()
+    if _system_palette is None:
+        from PySide6.QtGui import QPalette
+        _system_palette = QPalette(app.palette())
+    app.styleHints().setColorScheme(scheme_for_theme(theme))
+    if theme in ("light", "dark"):
+        app.setPalette(_palette_for_theme(theme))
+    else:
+        app.setPalette(_system_palette)
 
 
 class TaskRow(QFrame):

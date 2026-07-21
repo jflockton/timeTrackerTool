@@ -508,6 +508,19 @@ def test_theme_scheme_mapping():
     assert scheme_for_theme("banana") == Qt.ColorScheme.Unknown
 
 
+def test_apply_theme_actually_changes_the_palette(qapp):
+    from timetracker.app import apply_theme
+
+    apply_theme("dark")
+    dark_window = qapp.palette().window().color()
+    apply_theme("light")
+    light_window = qapp.palette().window().color()
+    assert dark_window.lightness() < 100 < light_window.lightness()
+
+    apply_theme("")  # back to following the OS
+    assert qapp.palette().window().color() != dark_window
+
+
 def test_theme_setting_saved_and_applied_via_dialog(make_window, tmp_path):
     from timetracker.app import SettingsDialog
 
