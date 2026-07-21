@@ -68,6 +68,26 @@ def test_window_builds_rows_and_toggles(make_window, tmp_path):
     assert not window.rows[task_id].button.isChecked()
 
 
+def test_window_title_describes_the_running_task(make_window, tmp_path):
+    db_path = tmp_path / "title.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Project work")
+    seed.close()
+
+    window = make_window(db_path)
+    assert window.windowTitle() == "timeTrackerTool"
+
+    window.toggle_task(task_id)
+    assert "▶ Project work" in window.windowTitle()
+    assert "timeTrackerTool" in window.windowTitle()
+
+    window.enter_mini()  # the mini window carries the description too
+    assert "▶ Project work" in window.mini.windowTitle()
+
+    window.toggle_task(task_id)  # stop
+    assert window.windowTitle() == "timeTrackerTool"
+
+
 def test_app_icon_asset_loads(qapp):
     icon = app_icon()
     assert not icon.isNull()

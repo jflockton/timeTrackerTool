@@ -98,8 +98,19 @@ EMOJI_CHOICES = [
 
 
 def app_icon() -> QIcon:
-    """The bundled 13:37 LCD-clock icon (regenerate with scripts/make_assets.py)."""
-    return QIcon(str(files("timetracker") / "assets" / "icon.png"))
+    """The bundled 13:37 LCD-clock icon (regenerate with scripts/make_assets.py).
+    Pre-scaled smoothly to the common small sizes — letting the platform
+    scale the 1024px original down to 16px is what made it look muddy in
+    the taskbar."""
+    from PySide6.QtGui import QPixmap
+
+    source = QPixmap(str(files("timetracker") / "assets" / "icon.png"))
+    icon = QIcon()
+    for size in (16, 20, 24, 32, 48, 64, 128, 256):
+        icon.addPixmap(source.scaled(
+            size, size, Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+    return icon
 
 
 # Card styling for task rows; [running="true"] lights the active task up.
@@ -1168,6 +1179,7 @@ class MainWindow(QMainWindow):
             self.rows[task_id].name = name.strip()
             self.rows[task_id].refresh()
             self._rebuild_tray_menu()
+            self._update_window_title()
 
     def archive_task(self, task_id: str, name: str) -> None:
         confirm = QMessageBox.question(
@@ -1197,8 +1209,24 @@ class MainWindow(QMainWindow):
         if self.mini is not None:
             self.mini.refresh()
         self._update_tray_state()
+        self._update_window_title()
         if self.engine.running_task == task_id:
             self.flash_task(task_id)  # green "accepted" pulse on start
+
+    def _update_window_title(self) -> None:
+        """Carry the running task in the title, like Excel carries the
+        document — so the taskbar and Alt-Tab say what's being tracked."""
+        running = self.engine.running_task
+        if running is not None and running in self.rows:
+            title = (f"▶ {self.rows[running].name} · "
+                     f"{format_hms(self.today_seconds(running))} today"
+                     " — timeTrackerTool")
+        else:
+            title = "timeTrackerTool"
+        if self.windowTitle() != title:
+            self.setWindowTitle(title)
+        if self.mini is not None and self.mini.windowTitle() != title:
+            self.mini.setWindowTitle(title)
 
     def today_seconds(self, task_id: str) -> float:
         today = date.today().isoformat()
@@ -1225,6 +1253,7 @@ class MainWindow(QMainWindow):
         )
         if self.tray is not None:
             self._update_tray_state()
+        self._update_window_title()
         if date.today() != self._today:
             # Midnight rollover: every card's "today" total starts from zero,
             # not just the running one's
@@ -1317,6 +1346,7 @@ class MainWindow(QMainWindow):
         if self.mini is not None:
             self.mini.refresh()
         self._update_tray_state()
+        self._update_window_title()
 
     def today_total(self) -> float:
         """All tasks' seconds today, including the running timer's live span."""
@@ -1529,6 +1559,7 @@ class MainWindow(QMainWindow):
             self.mini = MiniWindow(self)
         self.mini.rebuild()
         self.mini.refresh()
+        self._update_window_title()
         self.mini.show()
         self.hide()
 

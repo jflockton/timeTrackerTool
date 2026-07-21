@@ -82,7 +82,10 @@ def _draw_digit(p: QPainter, digit: str, x: float, y: float,
 
 
 def make_icon() -> None:
-    """A nerdy LCD clock reading 13:37 (leet o'clock) on a dark tile."""
+    """The 13:37 LCD clock (leet o'clock), now on a bright arcade-orange
+    tile. The old near-black tile disappeared into a dark taskbar next to
+    the likes of Excel's bright green — a saturated tile stays legible even
+    at 16px, where the colour is most of what registers."""
     size = 1024
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -94,25 +97,25 @@ def make_icon() -> None:
     p.setClipPath(tile)
 
     bg = QLinearGradient(0, 0, 0, size)
-    bg.setColorAt(0.0, QColor("#10141b"))
-    bg.setColorAt(1.0, QColor("#070b08"))
+    bg.setColorAt(0.0, QColor("#fb923c"))
+    bg.setColorAt(1.0, QColor("#ea580c"))
     p.fillPath(tile, QBrush(bg))
 
-    # Recessed LCD screen window
-    screen = QRectF(120, 300, size - 240, 424)
-    p.setPen(QPen(QColor("#1f2a22"), 14))
-    p.setBrush(QColor("#060a07"))
+    # Recessed LCD screen window — the dark inset carries the contrast
+    screen = QRectF(120, 280, size - 240, 464)
+    p.setPen(QPen(QColor("#7c2d12"), 16))
+    p.setBrush(QColor("#0a0f0b"))
     p.drawRoundedRect(screen, 60, 60)
 
     on = QColor("#39ff5a")
     off = QColor(57, 255, 90, 26)
 
-    # 13:37 — slight italic shear like a real LCD
-    digit_w, digit_h, thick, gap = 138, 330, 36, 30
+    # 13:37 — slight italic shear like a real LCD, filling the screen
+    digit_w, digit_h, thick, gap = 148, 360, 40, 30
     colon_w = 54
     total = 4 * digit_w + 3 * gap + colon_w + gap
     p.save()
-    p.translate((size - total) / 2 + 20, (size - digit_h) / 2 + 60)
+    p.translate((size - total) / 2 + 20, (size - digit_h) / 2 + 70)
     p.shear(-0.08, 0)
     x = 0.0
     for ch in "13:37":
@@ -127,13 +130,14 @@ def make_icon() -> None:
             x += digit_w + gap
     p.restore()
 
-    # Label above the screen, like a proper gadget
-    label = _pixel_text("TIME TRACKER", QColor("#39ff5a"), 10, 5)
-    p.drawPixmap(int((size - label.width()) / 2), 170, label)
+    # Label above the screen, like a proper gadget — white on orange
+    label = _pixel_text("TIME TRACKER", QColor("#ffffff"), 10, 5)
+    p.drawPixmap(int((size - label.width()) / 2), 158, label)
 
-    # Faint CRT scanlines across the tile
-    for y in range(64, size - 64, 16):
-        p.fillRect(QRectF(64, y, size - 128, 5), QColor(0, 0, 0, 60))
+    # Faint CRT scanlines, only on the screen so the tile stays vivid
+    for y in range(int(screen.top()), int(screen.bottom()), 16):
+        p.fillRect(QRectF(screen.left(), y, screen.width(), 5),
+                   QColor(0, 0, 0, 60))
 
     p.end()
     pixmap.save(str(ASSETS / "icon.png"), "PNG")
