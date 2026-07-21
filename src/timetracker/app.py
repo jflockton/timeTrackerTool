@@ -788,9 +788,12 @@ class MainWindow(QMainWindow):
         archived_btn.setToolTip("Restore or permanently delete archived tasks")
         archived_btn.clicked.connect(lambda: ArchivedTasksDialog(self).exec())
         settings_btn = QPushButton("☰")
-        settings_btn.setFixedWidth(36)
+        # Match the neighbouring buttons' height exactly; scale the glyph
+        # to the button rather than hardcoding a font size.
+        btn_height = archived_btn.sizeHint().height()
+        settings_btn.setFixedSize(int(btn_height * 1.4), btn_height)
         burger_font = settings_btn.font()
-        burger_font.setPointSize(burger_font.pointSize() + 2)
+        burger_font.setPixelSize(max(12, int(btn_height * 0.5)))
         settings_btn.setFont(burger_font)
         settings_btn.setToolTip("Settings: sync, autostart, daily target, nudges")
         settings_btn.clicked.connect(lambda: SettingsDialog(self).exec())
