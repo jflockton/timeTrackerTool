@@ -448,6 +448,11 @@ class SettingsDialog(QDialog):
         start_row.addWidget(self.nudge_start_time)
         form.addRow("🌅 Morning:", start_row)
 
+        self.banner_check = QCheckBox("Animated banner (marching invaders, saucer raids)")
+        self.banner_check.setChecked(
+            db.get_setting(conn, "banner_animated", "1") == "1")
+        form.addRow("👾 Banner:", self.banner_check)
+
         self.obsidian_edit = QLineEdit(
             db.get_setting(conn, "obsidian_dir", DEFAULT_OBSIDIAN_DIR))
         obsidian_browse = QPushButton("Browse…")
@@ -494,6 +499,8 @@ class SettingsDialog(QDialog):
                        self.nudge_start_time.time().toString("HH:mm")
                        if self.nudge_start_check.isChecked() else "")
         db.set_setting(conn, "obsidian_dir", self.obsidian_edit.text().strip())
+        db.set_setting(conn, "banner_animated",
+                       "1" if self.banner_check.isChecked() else "0")
         try:
             if self.login_check.isChecked():
                 autostart.enable()
@@ -945,6 +952,8 @@ class MainWindow(QMainWindow):
             db.get_setting(self.conn, "target_hours", DEFAULT_TARGET_HOURS))
         self.target_bar.setVisible(self.target_hours > 0)
         self._update_target_bar()
+        self.banner.set_animated(
+            db.get_setting(self.conn, "banner_animated", "1") == "1")
 
     def today_total(self) -> float:
         """All tasks' seconds today, including the running timer's live span."""

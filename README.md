@@ -10,7 +10,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![GUI](https://img.shields.io/badge/GUI-PySide6%20(Qt)-41cd52)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003b57)
-![Tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)
 ![Coins inserted](https://img.shields.io/badge/coins%20inserted-1UP-facc15)
 
@@ -109,7 +109,9 @@ judgmental.
   time today** (HI-SCORE is your daily target). At random intervals a red
   saucer blasts across and shoots every invader — each explodes — and the
   formation respawns moments later. This feature was requested with the
-  words "Too much?!" and the answer was no.
+  words "Too much?!" and the answer was no. (If it *is* too much for you,
+  Settings (☰) has an "Animated banner" switch — off freezes it to a calm
+  static frame.)
 
 ## 💻 System requirements
 

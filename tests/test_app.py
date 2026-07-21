@@ -316,6 +316,21 @@ def test_sync_now_pulls_other_machine_into_open_window(make_window, tmp_path):
     assert db.seconds_for_day(window.conn, task, "2026-07-19") == 900
 
 
+def test_banner_animation_toggle_via_settings(make_window, tmp_path):
+    window = make_window(tmp_path / "banner.db")
+    assert window.banner.timer.isActive()  # animated by default
+
+    db.set_setting(window.conn, "banner_animated", "0")
+    window.apply_settings()
+    assert not window.banner.timer.isActive()
+    assert window.banner.saucer_x is None  # frozen to a clean frame
+    assert all(i.state == "alive" for i in window.banner.invaders)
+
+    db.set_setting(window.conn, "banner_animated", "1")
+    window.apply_settings()
+    assert window.banner.timer.isActive()
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)

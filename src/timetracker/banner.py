@@ -93,6 +93,22 @@ class BannerWidget(QWidget):
     def stop(self) -> None:
         self.timer.stop()
 
+    def set_animated(self, on: bool) -> None:
+        """Toggle the animation. Off = freeze to a clean static frame
+        (formation intact, no saucer mid-flight, prompt visible)."""
+        if on:
+            if not self.timer.isActive():
+                self.timer.start(FPS_MS)
+        else:
+            self.timer.stop()
+            self.saucer_x = None
+            self.lasers = []
+            for invader in self.invaders:
+                invader.state = "alive"
+                invader.frame = 0
+            self.blink_on = True
+            self.update()
+
     def set_scores(self, today: str, target: str) -> None:
         """1UP = today's tracked time; HI-SCORE = the daily target."""
         if today != self._score_text:
