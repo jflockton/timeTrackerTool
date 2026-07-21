@@ -229,6 +229,20 @@ def make_banner() -> None:
 
 def main() -> None:
     QGuiApplication(sys.argv)
+    # Sandboxed/offscreen environments can enumerate zero system fonts,
+    # which silently bakes tofu boxes into every text label. Load a
+    # monospace font straight from its file before drawing anything.
+    from PySide6.QtGui import QFontDatabase
+    if not QFontDatabase.families():
+        for candidate in (r"C:\Windows\Fonts\consola.ttf",
+                          "/System/Library/Fonts/Monaco.ttf",
+                          "/System/Library/Fonts/Menlo.ttc"):
+            if (Path(candidate).exists()
+                    and QFontDatabase.addApplicationFont(candidate) >= 0):
+                break
+    if not QFontDatabase.families():
+        raise SystemExit("No fonts available — refusing to bake tofu into "
+                         "the assets. Run from a normal desktop session.")
     ASSETS.mkdir(parents=True, exist_ok=True)
     make_icon()
     make_banner()
