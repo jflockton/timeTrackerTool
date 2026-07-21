@@ -28,8 +28,22 @@ from PySide6.QtGui import (
 
 PREFIX = "icon:"
 # The monochrome Notion icon library (free set via files2notion.com) —
-# tinted black or white at render time to follow the app theme.
+# tokens are "notion:<name>" (auto: black/white follows the theme) or
+# "notion:<name>:<colour>" for a fixed Notion-style colour.
 NOTION_PREFIX = "notion:"
+
+NOTION_COLOURS = {
+    "auto": None,  # follow the theme: near-black on light, near-white on dark
+    "gray": "#9ca3af",
+    "brown": "#a47148",
+    "orange": "#f97316",
+    "yellow": "#d9a80b",
+    "green": "#22c55e",
+    "blue": "#3b82f6",
+    "purple": "#a855f7",
+    "pink": "#ec4899",
+    "red": "#ef4444",
+}
 
 COLOURS = {
     "blue": "#3b82f6",
@@ -104,9 +118,21 @@ def parse(token: str) -> tuple[str, str]:
     return kind, colour
 
 
+def notion_parts(token: str) -> tuple[str, str | None]:
+    """'notion:alien' -> ('alien', None); 'notion:alien:blue' -> colour set.
+    Unknown colours degrade to auto rather than crashing."""
+    body = token[len(NOTION_PREFIX):]
+    name, _, colour = body.partition(":")
+    if colour not in NOTION_COLOURS or NOTION_COLOURS[colour] is None:
+        return name, None
+    return name, colour
+
+
 def label(token: str) -> str:
     if is_notion(token):
-        return token[len(NOTION_PREFIX):].replace("-", " ").title()
+        name, colour = notion_parts(token)
+        pretty = name.replace("-", " ").title()
+        return f"{pretty} ({colour})" if colour else pretty
     kind, colour = parse(token)
     return f"{KIND_NAMES[kind]} ({colour})"
 
@@ -403,16 +429,19 @@ def pixmap(token: str, size: int, dpr: float = 1.0) -> QPixmap:
     never scale a pixmap afterwards, that's what looks blocky next to
     text-rendered emoji. Pass the target widget's devicePixelRatioF() so
     high-DPI displays get a full-resolution render too. Notion-library
-    icons are tinted to the current theme (white on dark, black on light),
-    so the cache key includes the tint."""
-    dark = _dark_ui() if is_notion(token) else False
+    icons with no fixed colour are tinted to the current theme (white on
+    dark, black on light), so the cache key includes the tint."""
+    dark = False
+    if is_notion(token) and notion_parts(token)[1] is None:
+        dark = _dark_ui()
     return _render(token, size, dpr, dark)
 
 
 @lru_cache(maxsize=2048)
 def _render(token: str, size: int, dpr: float, dark: bool) -> QPixmap:
     if is_notion(token):
-        return _render_notion(token[len(NOTION_PREFIX):], size, dpr, dark)
+        name, colour = notion_parts(token)
+        return _render_notion(name, size, dpr, dark, colour)
     kind, colour = parse(token)
     base = QColor(COLOURS[colour])
     px = max(1, int(round(size * dpr)))
@@ -435,9 +464,11 @@ def _render(token: str, size: int, dpr: float, dark: bool) -> QPixmap:
     return canvas
 
 
-def _render_notion(name: str, size: int, dpr: float, dark: bool) -> QPixmap:
-    """Render a Notion-library SVG tinted to a single colour: near-white on
-    a dark theme, near-black on a light one."""
+def _render_notion(name: str, size: int, dpr: float, dark: bool,
+                   colour: str | None = None) -> QPixmap:
+    """Render a Notion-library SVG tinted to a single colour: a fixed
+    Notion-style colour if one was picked, otherwise near-white on a dark
+    theme / near-black on a light one."""
     from PySide6.QtSvg import QSvgRenderer
 
     try:
@@ -445,6 +476,10 @@ def _render_notion(name: str, size: int, dpr: float, dark: bool) -> QPixmap:
                 / f"{name}.svg").read_bytes()
     except (FileNotFoundError, OSError):
         data = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"/>'
+    if colour:
+        tint = QColor(NOTION_COLOURS[colour])
+    else:
+        tint = QColor("#f2f2f2" if dark else "#161616")
     px = max(1, int(round(size * dpr)))
     canvas = QPixmap(px, px)
     canvas.fill(Qt.GlobalColor.transparent)
@@ -452,7 +487,7 @@ def _render_notion(name: str, size: int, dpr: float, dark: bool) -> QPixmap:
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     QSvgRenderer(data).render(p, QRectF(0, 0, px, px))
     p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    p.fillRect(0, 0, px, px, QColor("#f2f2f2" if dark else "#161616"))
+    p.fillRect(0, 0, px, px, tint)
     p.end()
     canvas.setDevicePixelRatio(dpr)
     return canvas

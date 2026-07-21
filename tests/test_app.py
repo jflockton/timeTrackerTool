@@ -742,6 +742,44 @@ def test_notion_library_loads_renders_and_tints(qapp):
     assert max(opaque_lightnesses(dark_pm)) > 200   # white-ish on dark
 
 
+def test_notion_coloured_tokens_render_fixed_colour(qapp):
+    from timetracker import icons
+    from timetracker.app import apply_theme
+
+    token = f"{icons.NOTION_PREFIX}alien:blue"
+    assert icons.notion_parts(token) == ("alien", "blue")
+    assert icons.label(token) == "Alien (blue)"
+    assert icons.notion_parts(f"{icons.NOTION_PREFIX}alien:nope") == ("alien", None)
+
+    def blueish(image):
+        return any(
+            (c := image.pixelColor(x, y)).alpha() > 200
+            and c.blue() > c.red() + 40
+            for x in range(image.width()) for y in range(image.height()))
+
+    apply_theme("dark")
+    assert blueish(icons.pixmap(token, 32).toImage())  # colour fixed
+    apply_theme("light")
+    assert blueish(icons.pixmap(token, 32).toImage())  # in both themes
+    apply_theme("")
+
+
+def test_notion_colour_popup_offers_all_colours_and_picks(qapp):
+    from timetracker import icons
+    from timetracker.app import NotionColourPopup
+
+    dialog = EmojiPickerDialog(None, "Alpha", "")
+    popup = NotionColourPopup(dialog, "alien")
+    assert len(popup.swatches) == len(icons.NOTION_COLOURS)
+
+    popup.swatches[6].click()  # 6th index = blue in the ordered mapping
+    assert dialog.result() == 1
+    assert dialog.edit.text() == f"{icons.NOTION_PREFIX}alien:blue"
+    popup.deleteLater()
+    dialog.deleteLater()
+    qapp.processEvents()
+
+
 def test_notion_tab_search_filters_and_chooses(qapp):
     from timetracker import icons
 

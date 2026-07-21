@@ -51,9 +51,13 @@ judgmental.
   scale.
 - 🗂️ **The Library tab** — 885 monochrome icons from the free **Notion
   icon set** (via [files2notion.com](https://www.files2notion.com/free-tools/icons)
-  — credit to Notion for the artwork), searchable by name, tinted live to
-  match the theme: black in light mode, white in dark. Plus a bonus
-  `cog-arcade` drawn in-house to match. Hover any icon for its name. The Emoji tab keeps the quick-pick grid of 32 plus a
+  — credit to Notion for the artwork), searchable by name. Plus a bonus
+  `cog-arcade` drawn in-house to match. Hover any icon for its name.
+  Clicking an icon opens a Notion-style **colour popover**: pick from
+  ten colours (gray, brown, orange, yellow, green, blue, purple, pink,
+  red) or the default **auto**, which follows the theme — black in light
+  mode, white in dark. Colours stay put across themes, so similar tasks
+  keep their distinction even on the tiniest mini-mode buttons. The Emoji tab keeps the quick-pick grid of 32 plus a
   type-anything field (the OS emoji palette works in it too: ⌃⌘Space on
   macOS, Win+. on Windows). Icons show on the task cards, mini-mode
   buttons, tray menu, and the cube side-mapping dropdowns.

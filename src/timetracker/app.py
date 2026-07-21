@@ -14,7 +14,8 @@ from importlib.resources import files
 from pathlib import Path
 
 from PySide6.QtCore import QLockFile, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QFontMetrics, QIcon, QPainter, QPen, QColor
+from PySide6.QtGui import (QAction, QCursor, QFontMetrics, QIcon, QPainter,
+                           QPen, QColor)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
@@ -420,8 +421,7 @@ class EmojiPickerDialog(QDialog):
             item.setToolTip(icons.label(token))
             item.setData(Qt.ItemDataRole.UserRole, token)
             self.notion_list.addItem(item)
-        self.notion_list.itemClicked.connect(
-            lambda item: self._choose_icon(item.data(Qt.ItemDataRole.UserRole)))
+        self.notion_list.itemClicked.connect(self._open_colour_popup)
         self.notion_search.textChanged.connect(self._filter_notion)
         library_layout.addWidget(self.notion_list, stretch=1)
         tabs.addTab(library_page, "Library")
@@ -482,8 +482,16 @@ class EmojiPickerDialog(QDialog):
             token = item.data(Qt.ItemDataRole.UserRole)
             item.setHidden(bool(needle) and needle not in token)
 
+    def _open_colour_popup(self, item) -> None:
+        """Notion-style: clicking a Library icon offers it in each colour."""
+        name, _ = icons.notion_parts(item.data(Qt.ItemDataRole.UserRole))
+        popup = NotionColourPopup(self, name)
+        popup.move(QCursor.pos())
+        popup.show()
+
     @staticmethod
-    def get_emoji(parent: QWidget | None, task_name: str, current: str) -> tuple[str, bool]:
+    def get_emoji(parent: QWidget | None, task_name: str,
+                  current: str) -> tuple[str, bool]:
         dialog = EmojiPickerDialog(parent, task_name, current)
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
         text = dialog.edit.text()
@@ -492,6 +500,38 @@ class EmojiPickerDialog(QDialog):
             # "no change", not "remove my icon".
             text = current
         return text, accepted
+
+
+class NotionColourPopup(QFrame):
+    """A small popover showing the clicked Library icon in every Notion
+    colour (auto/theme first) — click a swatch to pick that exact token."""
+
+    def __init__(self, dialog: EmojiPickerDialog, name: str) -> None:
+        super().__init__(dialog, Qt.WindowType.Popup)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        grid = QGridLayout(self)
+        grid.setSpacing(2)
+        grid.setContentsMargins(6, 6, 6, 6)
+        dpr = dialog.devicePixelRatioF()
+        self.swatches: list[QPushButton] = []
+        for i, colour in enumerate(icons.NOTION_COLOURS):
+            token = (f"{icons.NOTION_PREFIX}{name}" if colour == "auto"
+                     else f"{icons.NOTION_PREFIX}{name}:{colour}")
+            button = QPushButton()
+            button.setFlat(True)
+            button.setFixedSize(34, 34)
+            button.setIcon(QIcon(icons.pixmap(token, 26, dpr)))
+            button.setIconSize(QSize(26, 26))
+            button.setToolTip("Theme (auto)" if colour == "auto"
+                              else colour.title())
+            button.clicked.connect(
+                lambda _checked=False, t=token: self._pick(dialog, t))
+            self.swatches.append(button)
+            grid.addWidget(button, i // 5, i % 5)
+
+    def _pick(self, dialog: EmojiPickerDialog, token: str) -> None:
+        self.close()
+        dialog._choose_icon(token)
 
 
 class MiniTaskButton(QPushButton):
