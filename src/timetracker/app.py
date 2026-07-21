@@ -120,6 +120,21 @@ QFrame#taskCard[flash="true"] {
 QFrame#taskCard QLabel { border: none; background: transparent; }
 """
 
+THEME_CHOICES = [("", "System default"), ("light", "Light"), ("dark", "Dark")]
+
+
+def scheme_for_theme(theme: str) -> Qt.ColorScheme:
+    """Map the stored theme setting to a Qt colour scheme; anything
+    unrecognised (including the empty default) means follow the OS."""
+    return {"light": Qt.ColorScheme.Light,
+            "dark": Qt.ColorScheme.Dark}.get(theme, Qt.ColorScheme.Unknown)
+
+
+def apply_theme(theme: str) -> None:
+    """Switch the whole app between light / dark / follow-the-OS. The card
+    styling uses translucent colours, so it reads fine on both palettes."""
+    QApplication.styleHints().setColorScheme(scheme_for_theme(theme))
+
 
 class TaskRow(QFrame):
     """One task in its own bordered card: name, today's time, start/stop."""
@@ -595,6 +610,14 @@ class SettingsDialog(QDialog):
             db.get_setting(conn, "banner_animated", "1") == "1")
         form.addRow("👾 Banner:", self.banner_check)
 
+        self.theme_combo = QComboBox()
+        for value, text in THEME_CHOICES:
+            self.theme_combo.addItem(text, value)
+        current_theme = db.get_setting(conn, "theme", "")
+        self.theme_combo.setCurrentIndex(
+            max(0, self.theme_combo.findData(current_theme)))
+        form.addRow("🎨 Theme:", self.theme_combo)
+
         self.cube_check = QCheckBox(
             "Enable Timeular tracker (close the official Timeular app first)")
         self.cube_check.setChecked(db.get_setting(conn, "cube_enabled", "0") == "1")
@@ -662,6 +685,7 @@ class SettingsDialog(QDialog):
         db.set_setting(conn, "obsidian_dir", self.obsidian_edit.text().strip())
         db.set_setting(conn, "banner_animated",
                        "1" if self.banner_check.isChecked() else "0")
+        db.set_setting(conn, "theme", self.theme_combo.currentData())
         db.set_setting(conn, "cube_enabled",
                        "1" if self.cube_check.isChecked() else "0")
         try:
@@ -1143,6 +1167,7 @@ class MainWindow(QMainWindow):
         self._update_target_bar()
         self.banner.set_animated(
             db.get_setting(self.conn, "banner_animated", "1") == "1")
+        apply_theme(db.get_setting(self.conn, "theme", ""))
         self._apply_cube_setting()
 
     # --- Timeular cube ----------------------------------------------------

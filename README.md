@@ -88,6 +88,8 @@ judgmental.
   required — your machines just converge.
 - 🚀 **Launch at login** — one checkbox in Settings registers the app as a
   macOS LaunchAgent / Windows Run entry, packaged or from source.
+- 🌗 **Light / dark mode** — Settings (☰) → Theme: follow the OS (default),
+  or force Light or Dark; applies instantly, no restart.
 - 🎯 **Daily target bar** — set your hours (default 7.5) and a progress bar
   fills as the day accumulates across all tasks. Beat it and the bar says
   so, arcade-style.

@@ -497,6 +497,35 @@ def test_cube_settings_dialog_saves_mappings(make_window, tmp_path):
     dialog2.deleteLater()
 
 
+def test_theme_scheme_mapping():
+    from PySide6.QtCore import Qt
+
+    from timetracker.app import scheme_for_theme
+
+    assert scheme_for_theme("light") == Qt.ColorScheme.Light
+    assert scheme_for_theme("dark") == Qt.ColorScheme.Dark
+    assert scheme_for_theme("") == Qt.ColorScheme.Unknown      # follow the OS
+    assert scheme_for_theme("banana") == Qt.ColorScheme.Unknown
+
+
+def test_theme_setting_saved_and_applied_via_dialog(make_window, tmp_path):
+    from timetracker.app import SettingsDialog
+
+    window = make_window(tmp_path / "theme.db")
+    dialog = SettingsDialog(window)
+    assert dialog.theme_combo.currentData() == ""  # default: system
+
+    dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("dark"))
+    dialog.save()
+    assert db.get_setting(window.conn, "theme", "") == "dark"
+
+    # reopening shows the saved choice; apply_settings ran without error
+    dialog2 = SettingsDialog(window)
+    assert dialog2.theme_combo.currentData() == "dark"
+    dialog.deleteLater()
+    dialog2.deleteLater()
+
+
 def test_icon_choices_are_unique_and_render(qapp):
     from timetracker import icons
 
