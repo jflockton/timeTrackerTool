@@ -413,6 +413,46 @@ def test_cube_denied_status_shows_settings_button(make_window, tmp_path):
     assert window._bt_settings_btn.isHidden()
 
 
+def test_settings_cube_config_button_follows_checkbox(make_window, tmp_path):
+    from timetracker.app import SettingsDialog
+
+    window = make_window(tmp_path / "cube_cfg.db")
+    dialog = SettingsDialog(window)
+    assert not dialog.cube_check.isChecked()  # cube off by default
+    assert not dialog._form.isRowVisible(dialog.cube_config_btn)
+
+    dialog.cube_check.setChecked(True)
+    assert dialog._form.isRowVisible(dialog.cube_config_btn)
+    dialog.cube_check.setChecked(False)
+    assert not dialog._form.isRowVisible(dialog.cube_config_btn)
+    dialog.deleteLater()
+
+
+def test_cube_settings_dialog_saves_mappings(make_window, tmp_path):
+    from timetracker.app import CubeSettingsDialog
+
+    db_path = tmp_path / "cube_dlg.db"
+    seed = db.connect(db_path)
+    alpha = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    dialog = CubeSettingsDialog(window)
+    combo = dialog.cube_combos[3]
+    combo.setCurrentIndex(1)  # index 0 is "— stop timer —", 1 is Alpha
+    dialog.cube_labels[3].setText("deep work")
+    dialog.save()
+    assert db.get_setting(window.conn, "cube_side_3", "") == alpha
+    assert db.get_setting(window.conn, "cube_label_3", "") == "deep work"
+
+    # reopening shows the saved mapping preselected
+    dialog2 = CubeSettingsDialog(window)
+    assert dialog2.cube_combos[3].currentData() == alpha
+    assert dialog2.cube_labels[3].text() == "deep work"
+    dialog.deleteLater()
+    dialog2.deleteLater()
+
+
 def test_emoji_picker_grid_fills_the_field(qapp):
     dialog = EmojiPickerDialog(None, "Alpha", "")
     assert len(dialog.grid_buttons) == len(EMOJI_CHOICES)

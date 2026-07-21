@@ -393,6 +393,64 @@ class MiniWindow(QWidget):
         super().closeEvent(event)
 
 
+class CubeSettingsDialog(QDialog):
+    """Map each side of the Timeular cube to a task, with optional sticker
+    labels. Saves straight to the settings table — the mappings are only
+    acted on while the cube is enabled in the main Settings dialog."""
+
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__(window)
+        self.window = window
+        conn = window.conn
+        self.setWindowTitle("Bluetooth time-tracker cube")
+        form = QFormLayout(self)
+
+        # The side numbers are fixed in the tracker's firmware — flip the
+        # cube and watch the status bar to see which face is which number,
+        # then note your sticker here and map it to a task.
+        tasks = db.list_tasks(conn)
+        self.cube_combos: dict[int, QComboBox] = {}
+        self.cube_labels: dict[int, QLineEdit] = {}
+        for side in SIDES:
+            sticker = QLineEdit(db.get_setting(conn, f"cube_label_{side}", ""))
+            sticker.setPlaceholderText("your sticker…")
+            sticker.setMaximumWidth(130)
+            combo = QComboBox()
+            combo.addItem("— stop timer —", "")
+            current = db.get_setting(conn, f"cube_side_{side}", "")
+            for task in tasks:
+                label = (f"{task['emoji']} {task['name']}" if task["emoji"]
+                         else task["name"])
+                combo.addItem(label, task["task_id"])
+                if task["task_id"] == current:
+                    combo.setCurrentIndex(combo.count() - 1)
+            self.cube_labels[side] = sticker
+            self.cube_combos[side] = combo
+            row = QHBoxLayout()
+            row.addWidget(sticker)
+            row.addWidget(combo, stretch=1)
+            form.addRow(f"🎲 Side {side}:", row)
+        hint = QLabel("Side numbers are fixed by the cube itself — flip a face "
+                      "up and the status bar shows its number.")
+        hint.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
+        form.addRow("", hint)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.save)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def save(self) -> None:
+        conn = self.window.conn
+        for side, combo in self.cube_combos.items():
+            db.set_setting(conn, f"cube_side_{side}", combo.currentData() or "")
+            db.set_setting(conn, f"cube_label_{side}",
+                           self.cube_labels[side].text().strip())
+        self.accept()
+
+
 class SettingsDialog(QDialog):
     """Sync folder, launch at login, daily target, nudges, Obsidian folder."""
 
@@ -460,35 +518,13 @@ class SettingsDialog(QDialog):
         self.cube_check.setChecked(db.get_setting(conn, "cube_enabled", "0") == "1")
         form.addRow("🎲 Cube:", self.cube_check)
 
-        # The side numbers are fixed in the tracker's firmware — flip the
-        # cube and watch the status bar to see which face is which number,
-        # then note your sticker here and map it to a task.
-        tasks = db.list_tasks(conn)
-        self.cube_combos: dict[int, QComboBox] = {}
-        self.cube_labels: dict[int, QLineEdit] = {}
-        for side in SIDES:
-            sticker = QLineEdit(db.get_setting(conn, f"cube_label_{side}", ""))
-            sticker.setPlaceholderText("your sticker…")
-            sticker.setMaximumWidth(130)
-            combo = QComboBox()
-            combo.addItem("— stop timer —", "")
-            current = db.get_setting(conn, f"cube_side_{side}", "")
-            for task in tasks:
-                label = (f"{task['emoji']} {task['name']}" if task["emoji"]
-                         else task["name"])
-                combo.addItem(label, task["task_id"])
-                if task["task_id"] == current:
-                    combo.setCurrentIndex(combo.count() - 1)
-            self.cube_labels[side] = sticker
-            self.cube_combos[side] = combo
-            row = QHBoxLayout()
-            row.addWidget(sticker)
-            row.addWidget(combo, stretch=1)
-            form.addRow(f"    Side {side}:", row)
-        hint = QLabel("Side numbers are fixed by the cube itself — flip a face "
-                      "up and the status bar shows its number.")
-        hint.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
-        form.addRow("", hint)
+        self.cube_config_btn = QPushButton("Configure bluetooth time-tracker cube…")
+        self.cube_config_btn.clicked.connect(
+            lambda: CubeSettingsDialog(self.window).exec())
+        form.addRow("", self.cube_config_btn)
+        self._form = form
+        self.cube_check.toggled.connect(self._update_cube_button)
+        self._update_cube_button(self.cube_check.isChecked())
 
         self.obsidian_edit = QLineEdit(
             db.get_setting(conn, "obsidian_dir", DEFAULT_OBSIDIAN_DIR))
@@ -505,6 +541,12 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.save)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
+
+    def _update_cube_button(self, checked: bool) -> None:
+        # Hide the whole form row, not just the button, so no blank gap is
+        # left behind when the cube is disabled.
+        self._form.setRowVisible(self.cube_config_btn, checked)
+        self.adjustSize()
 
     def _browse(self, edit: QLineEdit) -> None:
         start = str(Path(edit.text()).expanduser()) if edit.text() else str(Path.home())
@@ -540,10 +582,6 @@ class SettingsDialog(QDialog):
                        "1" if self.banner_check.isChecked() else "0")
         db.set_setting(conn, "cube_enabled",
                        "1" if self.cube_check.isChecked() else "0")
-        for side, combo in self.cube_combos.items():
-            db.set_setting(conn, f"cube_side_{side}", combo.currentData() or "")
-            db.set_setting(conn, f"cube_label_{side}",
-                           self.cube_labels[side].text().strip())
         try:
             if self.login_check.isChecked():
                 autostart.enable()

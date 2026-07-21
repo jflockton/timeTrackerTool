@@ -114,9 +114,10 @@ judgmental.
   static frame.)
 
 - 🎲 **Timeular cube support** — got one of those 8-sided Bluetooth time
-  trackers in a drawer? Enable it in Settings (☰), map each side to a task,
-  and flipping the cube starts that task's timer — base-down or an unmapped
-  side stops it. Auto-reconnects when the cube wakes. Close the official
+  trackers in a drawer? Enable it in Settings (☰) — a **Configure bluetooth
+  time-tracker cube** button appears with its own dialog for mapping each
+  side to a task (plus sticker labels) — and flipping the cube starts that
+  task's timer; base-down or an unmapped side stops it. Auto-reconnects when the cube wakes. Close the official
   Timeular app first (the tracker accepts one connection at a time); macOS
   asks for Bluetooth permission once. Uses the community-documented BLE
   protocol — your cube, your data, no cloud.
@@ -210,7 +211,20 @@ poetry run python scripts/build_app.py
 - **macOS** → `dist/timeTrackerTool.app` with a proper `.icns` (Dock,
   Cmd-Tab, Finder — the icon shows everywhere). Drag it into /Applications.
 - **Windows** → `dist/timeTrackerTool/timeTrackerTool.exe` with the `.ico`
-  embedded (Explorer, taskbar, shortcuts). Pin it wherever you like.
+  embedded (Explorer, taskbar, shortcuts). Pin it wherever you like — or
+  better, install it properly:
+
+  ```powershell
+  poetry run python scripts/install_windows.py
+  ```
+
+  The installer asks whether it's for **just you** (no admin;
+  `%LOCALAPPDATA%\Programs`) or **all users** (Program Files — it'll tell
+  you to re-run from an Administrator prompt with `--all-users`), copies the
+  built app there, and adds a **Start Menu shortcut** with the LCD-clock
+  icon. Re-run it after any rebuild to upgrade in place;
+  `--uninstall` removes the app and shortcut again (your tracked time is
+  never touched).
 
 The packaged app is self-contained — the target machine doesn't need Python
 at all. It uses the same data file as running from source, so you can switch

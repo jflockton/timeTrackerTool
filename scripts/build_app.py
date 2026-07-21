@@ -74,7 +74,8 @@ def main() -> int:
         print("Drag it into /Applications, double-click, done.")
     else:
         print(f"\nDone: {ROOT / 'dist' / 'timeTrackerTool' / 'timeTrackerTool.exe'}")
-        print("Pin it to the taskbar or make a shortcut.")
+        print("Add it to the Start Menu with:")
+        print("    poetry run python scripts/install_windows.py")
     return 0
 
 
