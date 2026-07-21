@@ -377,9 +377,7 @@ def test_cube_friendly_errors():
     denied = Exception(
         "Bluetooth access is denied by the user for the current application. "
         "Check macOS privacy settings.", "SomeEnumJunk")
-    assert friendly_error(denied) == (
-        "Bluetooth access denied — allow timeTrackerTool in the OS settings, "
-        "then restart the app")
+    assert friendly_error(denied) == "Bluetooth access denied"
     assert friendly_error(Exception("Bluetooth device is turned off")) \
         == "Bluetooth is turned off"
     long = Exception("x" * 300)

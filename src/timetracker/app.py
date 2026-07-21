@@ -990,6 +990,9 @@ class MainWindow(QMainWindow):
         if enabled and self.cube is None:
             if not hasattr(self, "_bt_settings_btn"):
                 self._bt_settings_btn = QPushButton("Open Bluetooth settings")
+                self._bt_settings_btn.setToolTip(
+                    "Allow timeTrackerTool in Privacy & Security ▸ Bluetooth, "
+                    "then restart the app")
                 self._bt_settings_btn.clicked.connect(open_bluetooth_settings)
                 self._bt_settings_btn.hide()
                 self.statusBar().addPermanentWidget(self._bt_settings_btn)

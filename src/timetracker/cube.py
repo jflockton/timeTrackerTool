@@ -33,8 +33,7 @@ def friendly_error(exc: Exception) -> str:
                else str(exc))
     lowered = message.lower()
     if "denied" in lowered and "bluetooth" in lowered:
-        return ("Bluetooth access denied — allow timeTrackerTool in the "
-                "OS settings, then restart the app")
+        return "Bluetooth access denied"
     if "turned off" in lowered or "powered off" in lowered:
         return "Bluetooth is turned off"
     return message.strip().rstrip(".")[:90]
