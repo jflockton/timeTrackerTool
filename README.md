@@ -261,6 +261,33 @@ The packaged app is self-contained — the target machine doesn't need Python
 at all. It uses the same data file as running from source, so you can switch
 between the two freely.
 
+### 📬 No Python? No problem — sharing the app
+
+The Windows build also drops a shareable bundle in
+`dist/timeTrackerTool-<version>-windows.zip`. Send that one file to
+anyone: they unzip it and double-click **install.bat** — it asks
+just-me / all-users (self-elevates for the latter), copies the app into
+place, and adds the Start Menu shortcut. **No Python, no settings
+changes, nothing else to install.** A newer zip + `install.bat` again
+upgrades in place; `install.bat -Uninstall` removes it (tracked time
+always survives, it lives in `%APPDATA%\timeTrackerTool`).
+
+> ⚠️ The app isn't code-signed, so Windows SmartScreen shows a warning
+> on first run: *More info → Run anyway*. On macOS: right-click → Open
+> the first time.
+
+For distributing to a group, skip the manual build entirely: push a
+version tag —
+
+```bash
+git tag v1.1.0 && git push --tags
+```
+
+— and GitHub Actions (`.github/workflows/release.yml`) runs the tests,
+builds the Windows bundle **and** a macOS `.app` zip, and attaches both
+to a GitHub Release. Share the release link; everyone grabs their own
+platform's download.
+
 ## 🔀 Two machines? Syncing your history
 
 Each machine tracks into its own local file, stamped with the machine's name.

@@ -1,0 +1,46 @@
+name: release
+
+# Push a version tag (git tag v1.1.0 && git push --tags) and this builds
+# the self-contained app on both OSes and attaches the bundles to a
+# GitHub Release — recipients need no Python, just the download link.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install dependencies
+        run: poetry install
+      - name: Run tests
+        run: poetry run pytest -q
+      - name: Build the app
+        run: poetry run python scripts/build_app.py
+      - name: Zip the macOS app
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --keepParent dist/timeTrackerTool.app \
+            "dist/timeTrackerTool-$(poetry version -s)-macos.zip"
+      - name: Attach bundles to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/timeTrackerTool-*-windows.zip
+            dist/timeTrackerTool-*-macos.zip
