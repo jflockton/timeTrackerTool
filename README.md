@@ -49,10 +49,11 @@ judgmental.
   distinguishable; one click picks. They render at the exact size and
   screen DPI wherever they appear, so they stay as crisp as emoji at any
   scale.
-- 🗂️ **The Library tab** — 885 monochrome icons from the free **Notion
-  icon set** (via [files2notion.com](https://www.files2notion.com/free-tools/icons)
-  — credit to Notion for the artwork), searchable by name. Plus a bonus
-  `cog-arcade` drawn in-house to match. Hover any icon for its name.
+- 🗂️ **The Library tab** — 888 monochrome icons: the free **Notion icon
+  set** (via [files2notion.com](https://www.files2notion.com/free-tools/icons)
+  — credit to Notion for the artwork), searchable by name, plus four
+  drawn in-house to match: `cog-arcade`, `email`, `envelope`, and `mug`.
+  Hover any icon for its name.
   Clicking an icon opens a Notion-style **colour popover**: pick from
   ten colours (gray, brown, orange, yellow, green, blue, purple, pink,
   red) or the default **auto**, which follows the theme — black in light

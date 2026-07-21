@@ -721,6 +721,9 @@ def test_notion_library_loads_renders_and_tints(qapp):
     assert len(names) > 800  # the whole set came across
     assert "cog-arcade" in names  # our own cog rides along
     assert "gear" in names
+    # In-house additions: names people actually search for
+    for own in ("email", "envelope", "mug"):
+        assert own in names
 
     token = f"{icons.NOTION_PREFIX}alien-pixel"
     assert icons.is_notion(token) and icons.is_custom(token)
