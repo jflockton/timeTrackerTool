@@ -24,7 +24,7 @@ because you can only actually do one thing at a time (controversial, we know).
 ## 📸 What it looks like
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Main window: arcade banner, task cards, one running task highlighted orange" width="440">
+  <img src="docs/main_window.png" alt="Main window: arcade banner, task cards, one running task highlighted orange" width="440">
 </p>
 
 Each task lives in its own card. The running task glows orange and its
@@ -42,8 +42,8 @@ judgmental.
   macOS, Win+. on Windows). The emoji scale with the window; make it big
   enough and each button also shows today's tracked time.
 
-  <img src="docs/mini_small.png" alt="Mini mode, compact: emoji only" height="72">
-  <img src="docs/mini_large.png" alt="Mini mode, enlarged: emoji plus task name and time" height="150">
+  <img src="docs/mini_compact.png" alt="Mini mode, compact: emoji only" height="72">
+  <img src="docs/mini_expanded.png" alt="Mini mode, enlarged: emoji plus task name and time" height="150">
 - ⏱️ **Cumulative daily timers** — every click adds to *today's* total for
   that task, displayed live to the second.
 - 🎯 **Single-active tracking** — starting a task stops the running one. No
