@@ -36,11 +36,17 @@ judgmental.
 - 🕹️ **One button per task** — configure as many tasks as you like; each gets
   a Start/Stop toggle in its own bordered card.
 - 🐭 **Mini mode** — one click shrinks the app to a tiny always-on-top,
-  resizable strip of emoji buttons, each with a short name label. Pick each
-  task's emoji via right-click → a proper picker dialog (quick-pick grid of
-  32, or type anything — the OS emoji palette works in it too: ⌃⌘Space on
-  macOS, Win+. on Windows). The emoji scale with the window; make it big
-  enough and each button also shows today's tracked time.
+  resizable strip of icon buttons, each with a short name label. The icons
+  scale with the window; make it big enough and each button also shows
+  today's tracked time.
+- 🎨 **Task icons (or emoji)** — right-click → **Set icon…** opens a
+  two-tab picker. The Icons tab has 24 built-in, code-drawn icons —
+  coding `</>`, documentation, project work, meetings, calls/headset,
+  email, each in four colours so similar tasks stay distinguishable; one
+  click picks. The Emoji tab keeps the quick-pick grid of 32 plus a
+  type-anything field (the OS emoji palette works in it too: ⌃⌘Space on
+  macOS, Win+. on Windows). Icons show on the task cards, mini-mode
+  buttons, tray menu, and the cube side-mapping dropdowns.
 
   <img src="docs/mini_compact.png" alt="Mini mode, compact: emoji only" height="72">
   <img src="docs/mini_expanded.png" alt="Mini mode, enlarged: emoji plus task name and time" height="150">
@@ -96,8 +102,15 @@ judgmental.
   history.
 - 📊 **Weekly report** — a Monday-to-Sunday day-by-day grid per task with
   day totals and a grand total; page backwards through past weeks.
-- 🗂️ **Rename & archive** — right-click any task card. Archived tasks vanish
-  from the main window but keep their history and still appear in reports.
+- 🗂️ **Rename, re-order & archive** — right-click any task card: rename,
+  **Move up / Move down** to arrange the list your way (the order sticks,
+  and mini mode + the tray menu follow it), or archive. Archived tasks
+  vanish from the main window but keep their history and still appear in
+  reports.
+- 🐭➖ **Pick your mini-mode line-up** — the same right-click menu has a
+  **Show in mini tracker** toggle per task, so the mini strip only shows
+  the tasks you actually switch between; everything still tracks and
+  reports as usual.
 - 🧹 **Archive manager** — the **Archived…** button lists archived tasks with
   their total logged time; restore any of them, or **Delete forever** (task
   plus all its logged time, behind a can't-miss confirmation).

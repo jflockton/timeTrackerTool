@@ -51,10 +51,12 @@ def ensure_timetracker_tables(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS tasks (
-            task_id    TEXT PRIMARY KEY,
-            name       TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            archived   INTEGER NOT NULL DEFAULT 0
+            task_id      TEXT PRIMARY KEY,
+            name         TEXT NOT NULL,
+            created_at   TEXT NOT NULL,
+            archived     INTEGER NOT NULL DEFAULT 0,
+            show_in_mini INTEGER NOT NULL DEFAULT 1,
+            sort_order   INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS time_entries (
             task_id    TEXT NOT NULL REFERENCES tasks(task_id),
@@ -74,6 +76,17 @@ def ensure_timetracker_tables(conn: sqlite3.Connection) -> None:
                for row in conn.execute("PRAGMA table_info(tasks)")}
     if "emoji" not in columns:
         conn.execute("ALTER TABLE tasks ADD COLUMN emoji TEXT NOT NULL DEFAULT ''")
+    # Migration for databases created before the mini-tracker toggle and
+    # manual ordering existed. Existing tasks keep their creation order.
+    if "show_in_mini" not in columns:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN show_in_mini INTEGER NOT NULL DEFAULT 1")
+    if "sort_order" not in columns:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "UPDATE tasks SET sort_order = (SELECT COUNT(*) FROM tasks t2"
+            " WHERE t2.created_at < tasks.created_at)")
     # Migration for databases created before cross-machine origins existed:
     # the primary key changes, so the table has to be rebuilt.
     entry_columns = {row["name"] if isinstance(row, sqlite3.Row) else row[1]
@@ -106,7 +119,9 @@ def create_task(conn: sqlite3.Connection, name: str) -> str:
         task_id = uuid.uuid4().hex[:8]
         try:
             conn.execute(
-                "INSERT INTO tasks (task_id, name, created_at) VALUES (?, ?, ?)",
+                "INSERT INTO tasks (task_id, name, created_at, sort_order)"
+                " VALUES (?, ?, ?,"
+                " (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks))",
                 (task_id, name, datetime.now(timezone.utc).isoformat()),
             )
             conn.commit()
@@ -119,7 +134,7 @@ def list_tasks(conn: sqlite3.Connection, include_archived: bool = False) -> list
     sql = "SELECT * FROM tasks"
     if not include_archived:
         sql += " WHERE archived = 0"
-    sql += " ORDER BY created_at"
+    sql += " ORDER BY sort_order, created_at"
     return list(conn.execute(sql))
 
 
@@ -131,6 +146,31 @@ def rename_task(conn: sqlite3.Connection, task_id: str, new_name: str) -> None:
 def set_task_emoji(conn: sqlite3.Connection, task_id: str, emoji: str) -> None:
     conn.execute("UPDATE tasks SET emoji = ? WHERE task_id = ?", (emoji.strip(), task_id))
     conn.commit()
+
+
+def set_task_mini(conn: sqlite3.Connection, task_id: str, show: bool) -> None:
+    """Whether the task gets a button in mini mode (full app is unaffected)."""
+    conn.execute("UPDATE tasks SET show_in_mini = ? WHERE task_id = ?",
+                 (1 if show else 0, task_id))
+    conn.commit()
+
+
+def move_task(conn: sqlite3.Connection, task_id: str, delta: int) -> bool:
+    """Move an active task up (delta=-1) or down (+1) in the display order.
+    Returns False (and changes nothing) at the ends of the list."""
+    ids = [t["task_id"] for t in list_tasks(conn)]
+    if task_id not in ids:
+        return False
+    i = ids.index(task_id)
+    j = i + delta
+    if j < 0 or j >= len(ids):
+        return False
+    ids[i], ids[j] = ids[j], ids[i]
+    for order, tid in enumerate(ids):
+        conn.execute("UPDATE tasks SET sort_order = ? WHERE task_id = ?",
+                     (order, tid))
+    conn.commit()
+    return True
 
 
 def archive_task(conn: sqlite3.Connection, task_id: str) -> None:

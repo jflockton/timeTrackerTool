@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSystemTrayIcon,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTimeEdit,
@@ -46,7 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import autostart, db, sync
+from . import autostart, db, icons, sync
 from .banner import BannerWidget
 from .cube import SIDES, CubeListener, open_bluetooth_settings
 from .core import TimerEngine, format_hms, split_span_by_date
@@ -124,11 +125,12 @@ class TaskRow(QFrame):
     """One task in its own bordered card: name, today's time, start/stop."""
 
     def __init__(self, task_id: str, name: str, window: "MainWindow",
-                 emoji: str = "") -> None:
+                 emoji: str = "", show_in_mini: bool = True) -> None:
         super().__init__()
         self.task_id = task_id
         self.name = name
         self.emoji = emoji
+        self.show_in_mini = show_in_mini
         self.window = window
 
         self.setObjectName("taskCard")
@@ -142,6 +144,10 @@ class TaskRow(QFrame):
         self.button.setFixedSize(84, 36)
         self.button.clicked.connect(self._on_clicked)
 
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(22, 22)
+        self.icon_label.setScaledContents(True)
+
         self.name_label = QLabel()
         name_font = self.name_label.font()
         name_font.setBold(True)
@@ -154,6 +160,7 @@ class TaskRow(QFrame):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.addWidget(self.button)
         layout.addSpacing(6)
+        layout.addWidget(self.icon_label)
         layout.addWidget(self.name_label, stretch=1)
         layout.addWidget(self.time_label)
         self.refresh()
@@ -164,13 +171,27 @@ class TaskRow(QFrame):
     def _context_menu(self, pos) -> None:
         menu = QMenu(self)
         rename = menu.addAction("Rename…")
-        emoji = menu.addAction("Set emoji…")
+        emoji = menu.addAction("Set icon…")
+        menu.addSeparator()
+        move_up = menu.addAction("Move up")
+        move_down = menu.addAction("Move down")
+        menu.addSeparator()
+        mini = menu.addAction("Show in mini tracker")
+        mini.setCheckable(True)
+        mini.setChecked(self.show_in_mini)
+        menu.addSeparator()
         archive = menu.addAction("Archive")
         chosen = menu.exec(self.mapToGlobal(pos))
         if chosen == rename:
             self.window.rename_task(self.task_id, self.name)
         elif chosen == emoji:
             self.window.set_emoji(self.task_id)
+        elif chosen == move_up:
+            self.window.move_task(self.task_id, -1)
+        elif chosen == move_down:
+            self.window.move_task(self.task_id, +1)
+        elif chosen == mini:
+            self.window.toggle_show_in_mini(self.task_id)
         elif chosen == archive:
             self.window.archive_task(self.task_id, self.name)
 
@@ -179,7 +200,14 @@ class TaskRow(QFrame):
         seconds = self.window.today_seconds(self.task_id)
         self.button.setText("■ Stop" if running else "▶ Start")
         self.button.setChecked(running)
-        self.name_label.setText(f"{self.emoji} {self.name}" if self.emoji else self.name)
+        if icons.is_icon(self.emoji):
+            self.icon_label.setPixmap(icons.pixmap(self.emoji, 44))
+            self.icon_label.show()
+            self.name_label.setText(self.name)
+        else:
+            self.icon_label.hide()
+            self.name_label.setText(
+                f"{self.emoji} {self.name}" if self.emoji else self.name)
         self.time_label.setText(f"{format_hms(seconds)} today")
         if self.property("running") != str(running).lower():
             self.setProperty("running", str(running).lower())
@@ -194,16 +222,48 @@ class TaskRow(QFrame):
 
 
 class EmojiPickerDialog(QDialog):
-    """Pick a task emoji: click one from the grid, or type/paste anything.
-    The OS emoji palette works in the text field too (see the hint)."""
+    """Pick a task icon: a code-drawn icon from the Icons tab (coding, docs,
+    project work, meetings, calls, email — four colours each), or any emoji
+    from the Emoji tab. Clicking an icon chooses it immediately; the emoji
+    tab keeps the type-anything field and OK button."""
 
     def __init__(self, parent: QWidget | None, task_name: str, current: str) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Set emoji")
+        self.setWindowTitle("Set icon")
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Emoji for '{task_name}' (shown on its mini-mode button):"))
+        layout.addWidget(
+            QLabel(f"Icon for '{task_name}' (shown on its mini-mode button):"))
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
 
-        self.edit = QLineEdit(current)
+        # --- Icons tab: click-to-choose, closes the dialog -----------------
+        icons_page = QWidget()
+        icons_layout = QVBoxLayout(icons_page)
+        self.icon_buttons: list[QPushButton] = []
+        icon_grid = QGridLayout()
+        icon_grid.setSpacing(2)
+        per_row = len(icons.COLOURS) * 2
+        for i, token in enumerate(icons.ICON_CHOICES):
+            button = QPushButton()
+            button.setFlat(True)
+            button.setFixedSize(38, 38)
+            button.setIcon(icons.qicon(token))
+            button.setIconSize(button.size() * 0.85)
+            button.setToolTip(icons.label(token))
+            button.clicked.connect(
+                lambda _checked=False, t=token: self._choose_icon(t))
+            self.icon_buttons.append(button)
+            icon_grid.addWidget(button, i // per_row, i % per_row)
+        icons_layout.addLayout(icon_grid)
+        icon_hint = QLabel("Click an icon to use it.")
+        icon_hint.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
+        icons_layout.addWidget(icon_hint)
+        tabs.addTab(icons_page, "Icons")
+
+        # --- Emoji tab: the classic grid + type-anything field --------------
+        emoji_page = QWidget()
+        emoji_layout = QVBoxLayout(emoji_page)
+        self.edit = QLineEdit("" if icons.is_icon(current) else current)
         self.edit.setPlaceholderText("…or type/paste any emoji here")
 
         self.grid_buttons: list[QPushButton] = []
@@ -220,8 +280,8 @@ class EmojiPickerDialog(QDialog):
             button.clicked.connect(lambda _checked=False, e=emoji: self.edit.setText(e))
             self.grid_buttons.append(button)
             grid.addWidget(button, i // 8, i % 8)
-        layout.addLayout(grid)
-        layout.addWidget(self.edit)
+        emoji_layout.addLayout(grid)
+        emoji_layout.addWidget(self.edit)
 
         if sys.platform == "darwin":
             hint = "Tip: press ⌃⌘Space in the box above for the full macOS emoji picker."
@@ -229,7 +289,11 @@ class EmojiPickerDialog(QDialog):
             hint = "Tip: press Win+. in the box above for the full Windows emoji picker."
         hint_label = QLabel(hint)
         hint_label.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
-        layout.addWidget(hint_label)
+        emoji_layout.addWidget(hint_label)
+        tabs.addTab(emoji_page, "Emoji")
+
+        if not icons.is_icon(current) and current:
+            tabs.setCurrentIndex(1)  # open on the tab matching the current pick
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -237,6 +301,10 @@ class EmojiPickerDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _choose_icon(self, token: str) -> None:
+        self.edit.setText(token)
+        self.accept()
 
     @staticmethod
     def get_emoji(parent: QWidget | None, task_name: str, current: str) -> tuple[str, bool]:
@@ -276,7 +344,7 @@ class MiniTaskButton(QPushButton):
 
     def _context_menu(self, pos) -> None:
         menu = QMenu(self)
-        emoji = menu.addAction("Set emoji…")
+        emoji = menu.addAction("Set icon…")
         back = menu.addAction("Back to full app")
         chosen = menu.exec(self.mapToGlobal(pos))
         if chosen == emoji:
@@ -307,12 +375,20 @@ class MiniTaskButton(QPushButton):
         show_time = self.shows_description()
         text_zone = 30 if show_time else 15
         emoji_rect = QRectF(rect.x(), rect.y(), rect.width(), rect.height() - text_zone)
-        emoji_font = self.font()
-        emoji_font.setPixelSize(
-            max(12, int(min(emoji_rect.width(), emoji_rect.height()) * 0.6))
-        )
-        p.setFont(emoji_font)
-        p.drawText(emoji_rect, Qt.AlignmentFlag.AlignCenter, self.emoji())
+        token = self.emoji()
+        if icons.is_icon(token):
+            side = max(12, int(min(emoji_rect.width(), emoji_rect.height()) * 0.8))
+            target = QRectF(
+                emoji_rect.center().x() - side / 2,
+                emoji_rect.center().y() - side / 2, side, side)
+            p.drawPixmap(target, icons.pixmap(token, 128), QRectF(0, 0, 128, 128))
+        else:
+            emoji_font = self.font()
+            emoji_font.setPixelSize(
+                max(12, int(min(emoji_rect.width(), emoji_rect.height()) * 0.6))
+            )
+            p.setFont(emoji_font)
+            p.drawText(emoji_rect, Qt.AlignmentFlag.AlignCenter, token)
 
         small = self.font()
         small.setPixelSize(10)
@@ -375,6 +451,8 @@ class MiniWindow(QWidget):
                 item.widget().deleteLater()
         self.buttons = {}
         for task in db.list_tasks(self.main.conn):
+            if not task["show_in_mini"]:
+                continue
             button = MiniTaskButton(task["task_id"], self.main)
             self.buttons[task["task_id"]] = button
             self.buttons_layout.addWidget(button)
@@ -419,9 +497,13 @@ class CubeSettingsDialog(QDialog):
             combo.addItem("— stop timer —", "")
             current = db.get_setting(conn, f"cube_side_{side}", "")
             for task in tasks:
-                label = (f"{task['emoji']} {task['name']}" if task["emoji"]
-                         else task["name"])
-                combo.addItem(label, task["task_id"])
+                if icons.is_icon(task["emoji"]):
+                    combo.addItem(icons.qicon(task["emoji"]), task["name"],
+                                  task["task_id"])
+                else:
+                    label = (f"{task['emoji']} {task['name']}" if task["emoji"]
+                             else task["name"])
+                    combo.addItem(label, task["task_id"])
                 if task["task_id"] == current:
                     combo.setCurrentIndex(combo.count() - 1)
             self.cube_labels[side] = sticker
@@ -905,7 +987,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         for task in db.list_tasks(self.conn):
-            self._add_row(task["task_id"], task["name"], task["emoji"])
+            self._add_row(task["task_id"], task["name"], task["emoji"],
+                          bool(task["show_in_mini"]))
 
         # Menu-bar / system-tray presence (skipped where no tray exists,
         # e.g. offscreen test runs)
@@ -934,11 +1017,35 @@ class MainWindow(QMainWindow):
         self.new_task_edit.clear()
         self._add_row(task_id, name)
 
-    def _add_row(self, task_id: str, name: str, emoji: str = "") -> None:
-        row = TaskRow(task_id, name, self, emoji)
+    def _add_row(self, task_id: str, name: str, emoji: str = "",
+                 show_in_mini: bool = True) -> None:
+        row = TaskRow(task_id, name, self, emoji, show_in_mini)
         self.rows[task_id] = row
         self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
         self._rebuild_tray_menu()
+
+    def toggle_show_in_mini(self, task_id: str) -> None:
+        row = self.rows[task_id]
+        row.show_in_mini = not row.show_in_mini
+        db.set_task_mini(self.conn, task_id, row.show_in_mini)
+        if self.mini is not None:
+            self.mini.rebuild()
+            self.mini.refresh()
+
+    def move_task(self, task_id: str, delta: int) -> None:
+        if not db.move_task(self.conn, task_id, delta):
+            return  # already at the top/bottom
+        row = self.rows[task_id]
+        index = self.rows_layout.indexOf(row)
+        self.rows_layout.removeWidget(row)
+        self.rows_layout.insertWidget(index + delta, row)
+        # Keep the rows dict in display order — the tray menu is built from it
+        self.rows = {t["task_id"]: self.rows[t["task_id"]]
+                     for t in db.list_tasks(self.conn)}
+        self._rebuild_tray_menu()
+        if self.mini is not None:
+            self.mini.rebuild()
+            self.mini.refresh()
 
     def set_emoji(self, task_id: str, parent: QWidget | None = None) -> None:
         row = self.rows[task_id]
@@ -1144,7 +1251,8 @@ class MainWindow(QMainWindow):
             # another machine's history arrived — rebuild what's visible
             for task in db.list_tasks(self.conn):
                 if task["task_id"] not in self.rows:
-                    self._add_row(task["task_id"], task["name"], task["emoji"])
+                    self._add_row(task["task_id"], task["name"], task["emoji"],
+                                  bool(task["show_in_mini"]))
             for row in self.rows.values():
                 row.refresh()
             if self.mini is not None:
@@ -1189,8 +1297,11 @@ class MainWindow(QMainWindow):
         menu = QMenu()
         self.tray_task_actions = {}
         for task_id, row in self.rows.items():
-            label = f"{row.emoji} {row.name}" if row.emoji else row.name
-            action = QAction(label, menu)
+            if icons.is_icon(row.emoji):
+                action = QAction(icons.qicon(row.emoji), row.name, menu)
+            else:
+                label = f"{row.emoji} {row.name}" if row.emoji else row.name
+                action = QAction(label, menu)
             action.setCheckable(True)
             action.setChecked(self.engine.running_task == task_id)
             action.triggered.connect(

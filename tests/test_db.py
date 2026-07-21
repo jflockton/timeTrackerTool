@@ -130,6 +130,63 @@ def test_origin_migration_rebuilds_old_time_entries():
     connection.close()
 
 
+def test_show_in_mini_defaults_on_and_toggles(conn):
+    task_id = db.create_task(conn, "Task")
+    assert db.list_tasks(conn)[0]["show_in_mini"] == 1
+    db.set_task_mini(conn, task_id, False)
+    assert db.list_tasks(conn)[0]["show_in_mini"] == 0
+    db.set_task_mini(conn, task_id, True)
+    assert db.list_tasks(conn)[0]["show_in_mini"] == 1
+
+
+def test_move_task_reorders_and_stops_at_edges(conn):
+    a = db.create_task(conn, "A")
+    b = db.create_task(conn, "B")
+    c = db.create_task(conn, "C")
+
+    def order():
+        return [t["task_id"] for t in db.list_tasks(conn)]
+
+    assert order() == [a, b, c]
+    assert db.move_task(conn, c, -1)
+    assert order() == [a, c, b]
+    assert db.move_task(conn, a, +1)
+    assert order() == [c, a, b]
+    assert not db.move_task(conn, c, -1)  # already at the top
+    assert not db.move_task(conn, b, +1)  # already at the bottom
+    assert order() == [c, a, b]
+
+
+def test_move_task_ignores_archived_neighbours(conn):
+    a = db.create_task(conn, "A")
+    b = db.create_task(conn, "B")
+    c = db.create_task(conn, "C")
+    db.archive_task(conn, b)
+    assert db.move_task(conn, c, -1)  # hops over the archived task entirely
+    assert [t["task_id"] for t in db.list_tasks(conn)] == [c, a]
+
+
+def test_mini_and_order_columns_migrate_old_databases():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    # A pre-reordering schema; rows inserted out of creation order
+    connection.execute(
+        "CREATE TABLE tasks (task_id TEXT PRIMARY KEY, name TEXT NOT NULL,"
+        " created_at TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,"
+        " emoji TEXT NOT NULL DEFAULT '')"
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES ('bbb', 'Second', '2026-02-01', 0, '')")
+    connection.execute(
+        "INSERT INTO tasks VALUES ('aaa', 'First', '2026-01-01', 0, '')")
+    db.ensure_timetracker_tables(connection)
+    tasks = db.list_tasks(connection)
+    assert [t["task_id"] for t in tasks] == ["aaa", "bbb"]  # creation order kept
+    assert [t["sort_order"] for t in tasks] == [0, 1]
+    assert all(t["show_in_mini"] == 1 for t in tasks)
+    connection.close()
+
+
 def test_deduct_seconds_clamps_and_targets_this_machine(conn):
     task_id = db.create_task(conn, "Task")
     db.add_seconds(conn, task_id, "2026-07-20", 100)          # this machine

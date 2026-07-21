@@ -413,6 +413,50 @@ def test_cube_denied_status_shows_settings_button(make_window, tmp_path):
     assert window._bt_settings_btn.isHidden()
 
 
+def test_mini_mode_hides_tasks_toggled_off(make_window, tmp_path):
+    db_path = tmp_path / "mini3.db"
+    seed = db.connect(db_path)
+    alpha = db.create_task(seed, "Alpha")
+    beta = db.create_task(seed, "Beta")
+    seed.close()
+
+    window = make_window(db_path)
+    window.enter_mini()
+    assert set(window.mini.buttons) == {alpha, beta}
+
+    window.toggle_show_in_mini(beta)
+    assert set(window.mini.buttons) == {alpha}
+    assert beta in window.rows  # the full app still shows the task
+
+    window.toggle_show_in_mini(beta)  # toggling back restores the button
+    assert set(window.mini.buttons) == {alpha, beta}
+
+
+def test_move_task_reorders_cards_dict_and_layout(make_window, tmp_path):
+    db_path = tmp_path / "order.db"
+    seed = db.connect(db_path)
+    a = db.create_task(seed, "A")
+    b = db.create_task(seed, "B")
+    c = db.create_task(seed, "C")
+    seed.close()
+
+    window = make_window(db_path)
+    assert list(window.rows) == [a, b, c]
+
+    window.move_task(c, -1)
+    assert list(window.rows) == [a, c, b]
+    layout_positions = [window.rows_layout.indexOf(window.rows[t])
+                        for t in (a, c, b)]
+    assert layout_positions == sorted(layout_positions)  # widgets moved too
+
+    window.move_task(a, -1)  # no-op at the top
+    assert list(window.rows) == [a, c, b]
+
+    # the new order survives a restart
+    window2 = make_window(db_path)
+    assert list(window2.rows) == [a, c, b]
+
+
 def test_settings_cube_config_button_follows_checkbox(make_window, tmp_path):
     from timetracker.app import SettingsDialog
 
@@ -451,6 +495,55 @@ def test_cube_settings_dialog_saves_mappings(make_window, tmp_path):
     assert dialog2.cube_labels[3].text() == "deep work"
     dialog.deleteLater()
     dialog2.deleteLater()
+
+
+def test_icon_choices_are_unique_and_render(qapp):
+    from timetracker import icons
+
+    assert len(icons.ICON_CHOICES) == len(icons.KINDS) * len(icons.COLOURS)
+    assert len(set(icons.ICON_CHOICES)) == len(icons.ICON_CHOICES)
+    for token in icons.ICON_CHOICES:
+        assert icons.is_icon(token)
+        pm = icons.pixmap(token, 64)
+        assert not pm.isNull() and pm.width() == 64
+    assert not icons.is_icon("🔥")
+    assert not icons.is_icon("")
+    # unknown parts degrade to a valid icon rather than crashing
+    assert icons.parse("icon:garbage-nope") in [
+        (k, c) for k in icons.KINDS for c in icons.COLOURS]
+
+
+def test_icon_picker_click_chooses_and_accepts(qapp):
+    from timetracker import icons
+
+    dialog = EmojiPickerDialog(None, "Alpha", "")
+    assert len(dialog.icon_buttons) == len(icons.ICON_CHOICES)
+    dialog.icon_buttons[0].click()  # icons choose-and-close in one click
+    assert dialog.result() == 1  # QDialog.DialogCode.Accepted
+    assert dialog.edit.text() == icons.ICON_CHOICES[0]
+    dialog.deleteLater()
+    qapp.processEvents()
+
+
+def test_icon_token_shows_pixmap_not_raw_text(make_window, tmp_path):
+    from timetracker import icons
+
+    db_path = tmp_path / "icon.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "Coding")
+    db.set_task_emoji(seed, task_id, icons.ICON_CHOICES[0])
+    seed.close()
+
+    window = make_window(db_path)
+    row = window.rows[task_id]
+    assert row.name_label.text() == "Coding"  # no "icon:code-blue" leaking out
+    assert not row.icon_label.isHidden()
+    assert row.icon_label.pixmap() is not None
+
+    window.enter_mini()
+    button = window.mini.buttons[task_id]
+    button.resize(80, 80)
+    assert not button.grab().isNull()  # paints the pixmap path without crashing
 
 
 def test_emoji_picker_grid_fills_the_field(qapp):
