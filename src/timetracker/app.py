@@ -762,6 +762,11 @@ class MainWindow(QMainWindow):
 
         self.new_task_edit = QLineEdit()
         self.new_task_edit.setPlaceholderText("New task name…")
+        edit_font = self.new_task_edit.font()
+        edit_font.setPointSize(edit_font.pointSize() + 2)
+        self.new_task_edit.setFont(edit_font)
+        self.new_task_edit.setFixedHeight(
+            int(self.new_task_edit.sizeHint().height() * 1.25))
         self.new_task_edit.returnPressed.connect(self.add_task)
         add_btn = QPushButton("Add task")
         add_btn.clicked.connect(self.add_task)
