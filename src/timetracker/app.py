@@ -211,6 +211,18 @@ def apply_theme(theme: str) -> None:
         app.setPalette(_palette_for_theme(theme))
     else:
         app.setPalette(_system_palette)
+    # Stylesheet-styled widgets (the task cards and everything inside the
+    # main window) cache their resolved colours at polish time and do NOT
+    # pick up an application palette change on their own. Clear any
+    # per-widget palette a style's polish() may have stamped on (that stamp
+    # blocks all later propagation), then repolish with the widget's OWN
+    # style — using app.style() here re-stamps and breaks the next switch.
+    from PySide6.QtGui import QPalette as _QPalette
+    for widget in app.allWidgets():
+        widget.setPalette(_QPalette())
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+        widget.update()
 
 
 class TaskRow(QFrame):

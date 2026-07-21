@@ -528,6 +528,41 @@ def test_theme_scheme_mapping():
     assert scheme_for_theme("banana") == Qt.ColorScheme.Unknown
 
 
+def _rendered_lightnesses(widget):
+    image = widget.grab().toImage()
+    values = []
+    for x in range(0, image.width(), 2):
+        for y in range(0, image.height(), 2):
+            colour = image.pixelColor(x, y)
+            if colour.alpha() > 0:
+                values.append(colour.lightness())
+    return values
+
+
+def test_task_text_stays_readable_after_live_theme_switch(make_window, tmp_path):
+    """Regression: stylesheet-styled widgets cache their colours at polish
+    time, so without a repolish a live palette swap left black task names
+    on dark cards."""
+    db_path = tmp_path / "contrast.db"
+    seed = db.connect(db_path)
+    task_id = db.create_task(seed, "READABLE")
+    seed.close()
+
+    window = make_window(db_path)
+    label = window.rows[task_id].name_label
+
+    db.set_setting(window.conn, "theme", "dark")
+    window.apply_settings()
+    assert max(_rendered_lightnesses(label)) > 150  # light text present
+
+    db.set_setting(window.conn, "theme", "light")
+    window.apply_settings()
+    assert min(_rendered_lightnesses(label)) < 100  # dark text present
+
+    db.set_setting(window.conn, "theme", "")
+    window.apply_settings()
+
+
 def test_apply_theme_actually_changes_the_palette(qapp):
     from timetracker.app import apply_theme
 
