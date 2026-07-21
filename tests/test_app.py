@@ -362,6 +362,22 @@ def test_cube_side_flips_start_and_stop_tasks(make_window, tmp_path):
     assert window.engine.running_task is None
 
 
+def test_cube_flip_status_includes_sticker_label(make_window, tmp_path):
+    db_path = tmp_path / "cube_label.db"
+    seed = db.connect(db_path)
+    alpha = db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    db.set_setting(window.conn, "cube_enabled", "1")
+    db.set_setting(window.conn, "cube_side_3", alpha)
+    db.set_setting(window.conn, "cube_label_3", "deep work")
+
+    assert window._describe_flip(3, alpha) == "Cube: side 3 (deep work) → Alpha"
+    assert window._describe_flip(0, "") == "Cube: on its base → timer stopped"
+    assert window._describe_flip(5, "") == "Cube: side 5 → unmapped, timer stopped"
+
+
 def test_cube_listener_lifecycle_without_hardware(qapp):
     from timetracker.cube import CubeListener
 

@@ -460,9 +460,16 @@ class SettingsDialog(QDialog):
         self.cube_check.setChecked(db.get_setting(conn, "cube_enabled", "0") == "1")
         form.addRow("🎲 Cube:", self.cube_check)
 
+        # The side numbers are fixed in the tracker's firmware — flip the
+        # cube and watch the status bar to see which face is which number,
+        # then note your sticker here and map it to a task.
         tasks = db.list_tasks(conn)
         self.cube_combos: dict[int, QComboBox] = {}
+        self.cube_labels: dict[int, QLineEdit] = {}
         for side in SIDES:
+            sticker = QLineEdit(db.get_setting(conn, f"cube_label_{side}", ""))
+            sticker.setPlaceholderText("your sticker…")
+            sticker.setMaximumWidth(130)
             combo = QComboBox()
             combo.addItem("— stop timer —", "")
             current = db.get_setting(conn, f"cube_side_{side}", "")
@@ -472,8 +479,16 @@ class SettingsDialog(QDialog):
                 combo.addItem(label, task["task_id"])
                 if task["task_id"] == current:
                     combo.setCurrentIndex(combo.count() - 1)
+            self.cube_labels[side] = sticker
             self.cube_combos[side] = combo
-            form.addRow(f"    Side {side}:", combo)
+            row = QHBoxLayout()
+            row.addWidget(sticker)
+            row.addWidget(combo, stretch=1)
+            form.addRow(f"    Side {side}:", row)
+        hint = QLabel("Side numbers are fixed by the cube itself — flip a face "
+                      "up and the status bar shows its number.")
+        hint.setStyleSheet("color: rgba(148, 163, 184, 0.9); font-size: 11px;")
+        form.addRow("", hint)
 
         self.obsidian_edit = QLineEdit(
             db.get_setting(conn, "obsidian_dir", DEFAULT_OBSIDIAN_DIR))
@@ -527,6 +542,8 @@ class SettingsDialog(QDialog):
                        "1" if self.cube_check.isChecked() else "0")
         for side, combo in self.cube_combos.items():
             db.set_setting(conn, f"cube_side_{side}", combo.currentData() or "")
+            db.set_setting(conn, f"cube_label_{side}",
+                           self.cube_labels[side].text().strip())
         try:
             if self.login_check.isChecked():
                 autostart.enable()
@@ -1023,6 +1040,22 @@ class MainWindow(QMainWindow):
             self.stop_running()
         elif task_id != self.engine.running_task:
             self.toggle_task(task_id)
+        self.statusBar().showMessage(self._describe_flip(side, task_id))
+
+    def _describe_flip(self, side: int, task_id: str) -> str:
+        """'Cube: side 3 (deep work) → Project work' — sticker label included
+        so identifying/naming faces is just flip-and-read."""
+        if side == 0:
+            return "Cube: on its base → timer stopped"
+        text = f"Cube: side {side}"
+        sticker = db.get_setting(self.conn, f"cube_label_{side}", "")
+        if sticker:
+            text += f" ({sticker})"
+        if task_id and task_id in self.rows:
+            text += f" → {self.rows[task_id].name}"
+        else:
+            text += " → unmapped, timer stopped"
+        return text
 
     def stop_running(self) -> None:
         running = self.engine.running_task
