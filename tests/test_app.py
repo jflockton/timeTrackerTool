@@ -517,6 +517,18 @@ def test_move_task_reorders_cards_dict_and_layout(make_window, tmp_path):
     assert list(window2.rows) == [a, c, b]
 
 
+def test_idle_prompt_buttons_say_what_they_do(make_window, tmp_path):
+    window = make_window(tmp_path / "idle_prompt.db")
+    box, keep, discard = window._build_idle_prompt(6, "Experience Centre")
+
+    assert "Do you want to keep" in box.text()  # an actual yes/no question
+    assert "still counting" in box.text()       # reassures the timer runs on
+    assert keep.text() == "Keep the time"
+    assert discard.text() == "Discard the 6 minutes"
+    assert box.defaultButton() is keep          # Enter = safe choice
+    box.deleteLater()
+
+
 def test_settings_cube_config_button_follows_checkbox(make_window, tmp_path):
     from timetracker.app import SettingsDialog
 

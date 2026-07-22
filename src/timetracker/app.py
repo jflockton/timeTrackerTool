@@ -1635,19 +1635,34 @@ class MainWindow(QMainWindow):
         if span is not None and self.engine.running_task is not None:
             self._prompt_idle(self.engine.running_task, span[0], span[1])
 
+    def _build_idle_prompt(self, minutes: int, name: str):
+        """The welcome-back dialog, with buttons that say what they do —
+        a bare Yes/No didn't map onto 'keep or discard?'. Returns
+        (box, keep_button, discard_button) so tests can inspect it
+        without exec()."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Welcome back")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(
+            f"You were away for about {minutes} minutes while '{name}' "
+            "was running.\n\n"
+            "Do you want to keep those away minutes on the clock?\n\n"
+            "(Either way the timer hasn't stopped — it's still counting "
+            "right now.)")
+        keep = box.addButton("Keep the time",
+                             QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton(f"Discard the {minutes} minutes",
+                                QMessageBox.ButtonRole.DestructiveRole)
+        box.setDefaultButton(keep)
+        return box, keep, discard
+
     def _prompt_idle(self, task_id: str, away_start: datetime,
                      away_end: datetime) -> None:
         minutes = int((away_end - away_start).total_seconds() // 60)
         name = self.rows[task_id].name if task_id in self.rows else task_id
-        choice = QMessageBox.question(
-            self, "Welcome back",
-            f"You were away for ~{minutes} minutes while '{name}' was running.\n\n"
-            "Keep that time, or discard the away gap?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        # Yes = keep. No = discard the away span from the logged totals.
-        if choice == QMessageBox.StandardButton.No:
+        box, _keep, discard = self._build_idle_prompt(minutes, name)
+        box.exec()
+        if box.clickedButton() is discard:
             self.discard_span(task_id, away_start, away_end)
 
     def discard_span(self, task_id: str, start: datetime, end: datetime) -> None:
