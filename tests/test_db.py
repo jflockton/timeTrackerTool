@@ -166,6 +166,27 @@ def test_move_task_ignores_archived_neighbours(conn):
     assert [t["task_id"] for t in db.list_tasks(conn)] == [c, a]
 
 
+def test_move_task_to_arbitrary_positions(conn):
+    a = db.create_task(conn, "A")
+    b = db.create_task(conn, "B")
+    c = db.create_task(conn, "C")
+    d = db.create_task(conn, "D")
+
+    def order():
+        return [t["task_id"] for t in db.list_tasks(conn)]
+
+    assert db.move_task_to(conn, d, 0)          # drag bottom to top
+    assert order() == [d, a, b, c]
+    assert db.move_task_to(conn, d, 3)          # and back to the bottom
+    assert order() == [a, b, c, d]
+    assert db.move_task_to(conn, a, 2)          # into the middle
+    assert order() == [b, c, a, d]
+    assert not db.move_task_to(conn, b, 0)      # dropped where it started
+    assert db.move_task_to(conn, b, 99)         # over-long index clamps
+    assert order() == [c, a, d, b]
+    assert not db.move_task_to(conn, "nope", 0)
+
+
 def test_mini_and_order_columns_migrate_old_databases():
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row

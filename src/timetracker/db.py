@@ -173,6 +173,26 @@ def move_task(conn: sqlite3.Connection, task_id: str, delta: int) -> bool:
     return True
 
 
+def move_task_to(conn: sqlite3.Connection, task_id: str, new_index: int) -> bool:
+    """Move an active task to a specific position in the display order
+    (0 = top; indexes count the active list with the task removed, i.e.
+    the final resting position). Returns False when nothing changes."""
+    ids = [t["task_id"] for t in list_tasks(conn)]
+    if task_id not in ids:
+        return False
+    old_index = ids.index(task_id)
+    ids.remove(task_id)
+    new_index = max(0, min(new_index, len(ids)))
+    ids.insert(new_index, task_id)
+    if ids.index(task_id) == old_index:
+        return False
+    for order, tid in enumerate(ids):
+        conn.execute("UPDATE tasks SET sort_order = ? WHERE task_id = ?",
+                     (order, tid))
+    conn.commit()
+    return True
+
+
 def archive_task(conn: sqlite3.Connection, task_id: str) -> None:
     conn.execute("UPDATE tasks SET archived = 1 WHERE task_id = ?", (task_id,))
     conn.commit()

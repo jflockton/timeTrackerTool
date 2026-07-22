@@ -492,6 +492,38 @@ def test_mini_mode_hides_tasks_toggled_off(make_window, tmp_path):
     assert set(window.mini.buttons) == {alpha, beta}
 
 
+def test_drag_handle_and_drop_index_maths(make_window, tmp_path):
+    from timetracker.app import DragHandle
+
+    db_path = tmp_path / "drag.db"
+    seed = db.connect(db_path)
+    a = db.create_task(seed, "A")
+    b = db.create_task(seed, "B")
+    c = db.create_task(seed, "C")
+    seed.close()
+
+    window = make_window(db_path)
+    row_b = window.rows[b]
+    assert isinstance(row_b.handle, DragHandle)
+    assert row_b.handle.cursor().shape() == Qt.CursorShape.OpenHandCursor
+
+    # Dragging A onto B: above-half lands where B is, below-half after it
+    assert row_b._insert_index_for(a, above=True) == 0
+    assert row_b._insert_index_for(a, above=False) == 1
+    # Dragging C onto B: same maths from the other direction
+    assert row_b._insert_index_for(c, above=True) == 1
+    assert row_b._insert_index_for(c, above=False) == 2
+
+    window.move_task_to(c, 0)  # the drop handler's end move
+    assert list(window.rows) == [c, a, b]
+    layout_positions = [window.rows_layout.indexOf(window.rows[t])
+                        for t in (c, a, b)]
+    assert layout_positions == sorted(layout_positions)
+
+    window2 = make_window(db_path)  # the new order survives a restart
+    assert list(window2.rows) == [c, a, b]
+
+
 def test_move_task_reorders_cards_dict_and_layout(make_window, tmp_path):
     db_path = tmp_path / "order.db"
     seed = db.connect(db_path)

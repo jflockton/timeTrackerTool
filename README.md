@@ -121,11 +121,12 @@ logo up top — the arcade invaders are one Settings dropdown away.
   history.
 - 📊 **Weekly report** — a Monday-to-Sunday day-by-day grid per task with
   day totals and a grand total; page backwards through past weeks.
-- 🗂️ **Rename, re-order & archive** — right-click any task card: rename,
-  **Move up / Move down** to arrange the list your way (the order sticks,
-  and mini mode + the tray menu follow it), or archive. Archived tasks
-  vanish from the main window but keep their history and still appear in
-  reports.
+- 🗂️ **Rename, re-order & archive** — grab the **⋮ handle** on any card
+  and drag it to a new spot (an orange line shows where it'll land), or
+  right-click for **Move up / Move down**. The order sticks, and mini
+  mode + the tray menu follow it. Right-click also renames and archives;
+  archived tasks vanish from the main window but keep their history and
+  still appear in reports.
 - 🐭➖ **Pick your mini-mode line-up** — the same right-click menu has a
   **Show in mini tracker** toggle per task, so the mini strip only shows
   the tasks you actually switch between; everything still tracks and

@@ -13,9 +13,10 @@ from datetime import date, datetime, time as dtime, timedelta
 from importlib.resources import files
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import (QAction, QCursor, QFontMetrics, QIcon, QPainter,
-                           QPen, QColor)
+from PySide6.QtCore import (QLockFile, QMimeData, QPointF, QRectF, QSize, Qt,
+                            QTimer)
+from PySide6.QtGui import (QAction, QCursor, QDrag, QFontMetrics, QIcon,
+                           QPainter, QPen, QColor)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication,
@@ -253,8 +254,62 @@ class LogoWidget(QWidget):
         p.end()
 
 
+TASK_MIME = "application/x-timetrackertool-task"
+
+
+class DragHandle(QWidget):
+    """The three-dot grip on a task card — press and drag to re-order."""
+
+    def __init__(self, row: "TaskRow") -> None:
+        super().__init__(row)
+        self.row = row
+        self.setFixedSize(16, 40)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setToolTip("Drag to re-order")
+        self._press_pos = None
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        dot = self.palette().windowText().color()
+        dot.setAlpha(110)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(dot)
+        cx, cy = self.width() / 2, self.height() / 2
+        for dy in (-7, 0, 7):
+            p.drawEllipse(QPointF(cx, cy + dy), 2, 2)
+        p.end()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def mouseReleaseEvent(self, _event) -> None:
+        self._press_pos = None
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._press_pos is None:
+            return
+        moved = (event.position() - self._press_pos).manhattanLength()
+        if moved < QApplication.startDragDistance():
+            return
+        self._press_pos = None
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData(TASK_MIME, self.row.task_id.encode())
+        drag.setMimeData(mime)
+        snapshot = self.row.grab()
+        drag.setPixmap(snapshot)
+        drag.setHotSpot(self.mapTo(self.row, event.position().toPoint()))
+        drag.exec(Qt.DropAction.MoveAction)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+
 class TaskRow(QFrame):
-    """One task in its own bordered card: name, today's time, start/stop."""
+    """One task in its own bordered card: name, today's time, start/stop.
+    Cards accept task drags and show an insert line above or below."""
 
     def __init__(self, task_id: str, name: str, window: "MainWindow",
                  emoji: str = "", show_in_mini: bool = True) -> None:
@@ -270,6 +325,10 @@ class TaskRow(QFrame):
         self.setProperty("flash", "false")
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
+        self.setAcceptDrops(True)
+        self._drop_side: str | None = None  # "above" | "below" while hovered
+
+        self.handle = DragHandle(self)
 
         self.button = QPushButton()
         self.button.setCheckable(True)
@@ -288,13 +347,60 @@ class TaskRow(QFrame):
         self.time_label = QLabel()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(6, 10, 12, 10)
+        layout.addWidget(self.handle)
         layout.addWidget(self.button)
         layout.addSpacing(6)
         layout.addWidget(self.icon_label)
         layout.addWidget(self.name_label, stretch=1)
         layout.addWidget(self.time_label)
         self.refresh()
+
+    # --- drag & drop re-ordering ------------------------------------------
+
+    def _insert_index_for(self, source_id: str, above: bool) -> int:
+        """Where the dragged task would land: index in the active list with
+        the dragged task itself excluded (db.move_task_to's contract)."""
+        ids = [tid for tid in self.window.rows if tid != source_id]
+        target = ids.index(self.task_id)
+        return target if above else target + 1
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasFormat(TASK_MIME):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event) -> None:
+        if not event.mimeData().hasFormat(TASK_MIME):
+            return
+        side = "above" if event.position().y() < self.height() / 2 else "below"
+        if side != self._drop_side:
+            self._drop_side = side
+            self.update()
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, _event) -> None:
+        self._drop_side = None
+        self.update()
+
+    def dropEvent(self, event) -> None:
+        source_id = bytes(event.mimeData().data(TASK_MIME)).decode()
+        above = self._drop_side != "below"
+        self._drop_side = None
+        self.update()
+        if source_id and source_id != self.task_id and source_id in self.window.rows:
+            self.window.move_task_to(
+                source_id, self._insert_index_for(source_id, above))
+        event.acceptProposedAction()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)  # the stylesheet-drawn card
+        if self._drop_side is None:
+            return
+        p = QPainter(self)
+        p.setPen(QPen(QColor("#f97316"), 3))
+        y = 2 if self._drop_side == "above" else self.height() - 2
+        p.drawLine(8, y, self.width() - 8, y)
+        p.end()
 
     def _on_clicked(self) -> None:
         self.window.toggle_task(self.task_id)
@@ -1280,13 +1386,23 @@ class MainWindow(QMainWindow):
     def move_task(self, task_id: str, delta: int) -> None:
         if not db.move_task(self.conn, task_id, delta):
             return  # already at the top/bottom
-        row = self.rows[task_id]
-        index = self.rows_layout.indexOf(row)
-        self.rows_layout.removeWidget(row)
-        self.rows_layout.insertWidget(index + delta, row)
-        # Keep the rows dict in display order — the tray menu is built from it
-        self.rows = {t["task_id"]: self.rows[t["task_id"]]
-                     for t in db.list_tasks(self.conn)}
+        self._apply_new_order()
+
+    def move_task_to(self, task_id: str, insert_index: int) -> None:
+        """Drag-and-drop landing spot (index excludes the dragged task)."""
+        if not db.move_task_to(self.conn, task_id, insert_index):
+            return  # dropped back where it started
+        self._apply_new_order()
+
+    def _apply_new_order(self) -> None:
+        """Re-lay the cards out in the database's order and keep the rows
+        dict in display order — the tray menu is built from it."""
+        order = [t["task_id"] for t in db.list_tasks(self.conn)]
+        for index, task_id in enumerate(order):
+            row = self.rows[task_id]
+            self.rows_layout.removeWidget(row)
+            self.rows_layout.insertWidget(index, row)
+        self.rows = {task_id: self.rows[task_id] for task_id in order}
         self._rebuild_tray_menu()
         if self.mini is not None:
             self.mini.rebuild()
