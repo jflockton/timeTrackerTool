@@ -22,7 +22,9 @@ from timetracker.app import (  # noqa: E402
     ArchivedTasksDialog,
     EmojiPickerDialog,
     MainWindow,
+    MiniWindow,
     app_icon,
+    mini_grid_shape,
 )
 
 
@@ -875,3 +877,76 @@ def test_mini_button_description_appears_with_size(make_window, tmp_path):
     assert not button.shows_description()
     button.resize(150, 150)
     assert button.shows_description()
+
+
+def test_mini_grid_shape_follows_window_proportions():
+    # wide strip -> one row; tall sliver -> one column; square -> a grid
+    assert mini_grid_shape(6, 340, 92) == (1, 6)
+    assert mini_grid_shape(6, 120, 500) == (6, 1)
+    assert mini_grid_shape(6, 300, 300) == (2, 3)
+    assert mini_grid_shape(9, 300, 300) == (3, 3)
+    # only tight grids: 5 tasks squarish gives 2 rows of 3 (one gap), not 3x2
+    assert mini_grid_shape(5, 300, 300) == (2, 3)
+    assert mini_grid_shape(1, 300, 300) == (1, 1)
+    assert mini_grid_shape(0, 300, 300) == (1, 1)
+
+
+def test_mini_window_restacks_on_resize(make_window, tmp_path):
+    db_path = tmp_path / "mini4.db"
+    seed = db.connect(db_path)
+    ids = [db.create_task(seed, name) for name in ("A", "B", "C", "D")]
+    seed.close()
+
+    window = make_window(db_path)
+    window.enter_mini()
+    mini = window.mini
+
+    def positions():
+        layout = mini.buttons_layout
+        out = {}
+        for i in range(layout.count()):
+            row, col, *_ = layout.getItemPosition(i)
+            out[layout.itemAt(i).widget().task_id] = (row, col)
+        return out
+
+    mini.resize(600, 100)  # wide -> one row, db order left to right
+    assert positions() == {ids[0]: (0, 0), ids[1]: (0, 1),
+                           ids[2]: (0, 2), ids[3]: (0, 3)}
+
+    mini.resize(260, 900)  # much taller than wide -> one vertical stack
+    assert positions() == {ids[0]: (0, 0), ids[1]: (1, 0),
+                           ids[2]: (2, 0), ids[3]: (3, 0)}
+
+    mini.resize(300, 300)  # squarish -> 2x2
+    assert positions() == {ids[0]: (0, 0), ids[1]: (0, 1),
+                           ids[2]: (1, 0), ids[3]: (1, 1)}
+
+
+def test_mini_window_geometry_persists(make_window, tmp_path):
+    db_path = tmp_path / "mini5.db"
+    seed = db.connect(db_path)
+    db.create_task(seed, "Alpha")
+    seed.close()
+
+    window = make_window(db_path)
+    window.enter_mini()
+    window.mini.setGeometry(80, 90, 210, 350)
+    window.exit_mini()  # hiding saves the geometry
+    assert db.get_setting(window.conn, "mini_geometry", "") == "80,90,210,350"
+
+    fresh = MiniWindow(window)  # a new session's window picks it back up
+    assert (fresh.geometry().width(), fresh.geometry().height()) == (210, 350)
+    assert (fresh.geometry().x(), fresh.geometry().y()) == (80, 90)
+    fresh.deleteLater()
+
+
+def test_mini_window_ignores_garbage_geometry(make_window, tmp_path):
+    db_path = tmp_path / "mini6.db"
+    seed = db.connect(db_path)
+    db.create_task(seed, "Alpha")
+    db.set_setting(seed, "mini_geometry", "not,really,numbers")
+    seed.close()
+
+    window = make_window(db_path)
+    window.enter_mini()  # must not raise; falls back to the default size
+    assert window.mini.width() == 340

@@ -37,9 +37,13 @@ logo up top — the arcade invaders are one Settings dropdown away.
 - 🕹️ **One button per task** — configure as many tasks as you like; each gets
   a Start/Stop toggle in its own bordered card.
 - 🐭 **Mini mode** — one click shrinks the app to a tiny always-on-top,
-  resizable strip of icon buttons, each with a short name label. The icons
-  scale with the window; make it big enough and each button also shows
-  today's tracked time.
+  resizable grid of icon buttons, each with a short name label. The
+  stacking follows the window's shape as you drag it: wide gives one row,
+  tall and narrow gives a vertical stack, anything between gives a grid
+  (3×2, 3×3, …). The icons scale with the window, make it big enough and
+  each button also shows today's tracked time, and the size and position
+  you settle on are remembered — mini mode reopens exactly where and how
+  you left it, restarts included.
 - 🎨 **Task icons (or emoji)** — right-click → **Set icon…** opens a
   three-tab picker. The Icons tab has 64 built-in, code-drawn icons — 16
   kinds covering the IT working week (coding `</>`, documentation,

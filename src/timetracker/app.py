@@ -7,7 +7,9 @@ a crash loses at most FLUSH_EVERY_TICKS seconds.
 
 from __future__ import annotations
 
+import math
 import os
+import sqlite3
 import sys
 from datetime import date, datetime, time as dtime, timedelta
 from importlib.resources import files
@@ -744,9 +746,40 @@ class MiniTaskButton(QPushButton):
         p.end()
 
 
+def mini_grid_shape(count: int, width: int, height: int) -> tuple[int, int]:
+    """Pick the (rows, columns) grid for `count` mini buttons that makes the
+    cells closest to square in a `width` x `height` area — so the stacking
+    follows however the window is dragged: wide = one row, tall and narrow =
+    one column, squarish = 3x2 / 3x3 / etc. Only 'tight' grids are considered
+    (columns = ceil(count / rows)), so there is never a mostly-empty row."""
+    if count <= 1:
+        return (1, 1)
+    width, height = max(1, width), max(1, height)
+    best: tuple[int, int] | None = None
+    best_score = math.inf
+    seen_cols: set[int] = set()
+    for rows in range(1, count + 1):
+        cols = math.ceil(count / rows)
+        if cols in seen_cols:
+            continue  # taller grid with the same columns just adds empty rows
+        seen_cols.add(cols)
+        # |ln(cell aspect)| is 0 for square cells; ties go to fewer rows
+        # (the epsilon absorbs float noise — ln(a/b) vs ln(b/a) can differ
+        # by one ulp, which must not flip a genuine tie)
+        score = abs(math.log((width / cols) / (height / rows)))
+        if score < best_score - 1e-9:
+            best, best_score = (rows, cols), score
+    assert best is not None
+    return best
+
+
 class MiniWindow(QWidget):
-    """Compact always-on-top strip of emoji task buttons. Resizable; the
-    emoji grow with it, descriptions appear once there's room."""
+    """Compact always-on-top grid of emoji task buttons. Resizable; the grid
+    re-stacks to fit the window's shape (wide = one row, tall = one column,
+    anything between = a grid), the emoji grow with it, and descriptions
+    appear once there's room. Size and position persist across sessions."""
+
+    GEOMETRY_KEY = "mini_geometry"
 
     def __init__(self, window: "MainWindow") -> None:
         super().__init__(
@@ -756,8 +789,9 @@ class MiniWindow(QWidget):
         self.suppress_restore = False
         self.setWindowTitle("timeTracker")
         self.buttons: dict[str, MiniTaskButton] = {}
+        self._grid_shape: tuple[int, int] = (0, 0)
 
-        self.buttons_layout = QHBoxLayout()
+        self.buttons_layout = QGridLayout()
         self.buttons_layout.setSpacing(6)
         restore = QPushButton("⤢")
         restore.setFixedSize(24, 24)
@@ -772,6 +806,7 @@ class MiniWindow(QWidget):
         outer.addLayout(self.buttons_layout, stretch=1)
         outer.addLayout(side)
         self.resize(340, 92)
+        self._restore_geometry()
 
     def rebuild(self) -> None:
         while self.buttons_layout.count():
@@ -784,7 +819,28 @@ class MiniWindow(QWidget):
                 continue
             button = MiniTaskButton(task["task_id"], self.main)
             self.buttons[task["task_id"]] = button
-            self.buttons_layout.addWidget(button)
+        self._grid_shape = (0, 0)
+        self._relayout()
+
+    def _relayout(self) -> None:
+        buttons = list(self.buttons.values())
+        rows, cols = mini_grid_shape(len(buttons), self.width(), self.height())
+        if (rows, cols) == self._grid_shape:
+            return
+        self._grid_shape = (rows, cols)
+        while self.buttons_layout.count():
+            self.buttons_layout.takeAt(0)
+        for i, button in enumerate(buttons):
+            self.buttons_layout.addWidget(button, i // cols, i % cols)
+        # QGridLayout never forgets rows/columns, so zero the stale stretches
+        for c in range(self.buttons_layout.columnCount()):
+            self.buttons_layout.setColumnStretch(c, 1 if c < cols else 0)
+        for r in range(self.buttons_layout.rowCount()):
+            self.buttons_layout.setRowStretch(r, 1 if r < rows else 0)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._relayout()
 
     def refresh(self) -> None:
         for button in self.buttons.values():
@@ -794,7 +850,28 @@ class MiniWindow(QWidget):
             button.setToolTip(f"{name} — {today} today")
             button.update()
 
+    def _restore_geometry(self) -> None:
+        stored = db.get_setting(self.main.conn, self.GEOMETRY_KEY, "")
+        try:
+            x, y, w, h = (int(part) for part in stored.split(","))
+        except ValueError:
+            return
+        self.setGeometry(x, y, max(120, w), max(60, h))
+
+    def save_geometry(self) -> None:
+        g = self.geometry()
+        try:
+            db.set_setting(self.main.conn, self.GEOMETRY_KEY,
+                           f"{g.x()},{g.y()},{g.width()},{g.height()}")
+        except sqlite3.ProgrammingError:
+            pass  # hide/close event arriving after shutdown closed the DB
+
+    def hideEvent(self, event) -> None:
+        self.save_geometry()
+        super().hideEvent(event)
+
     def closeEvent(self, event) -> None:
+        self.save_geometry()
         if not self.suppress_restore:
             self.main.exit_mini()
         super().closeEvent(event)
@@ -1861,6 +1938,8 @@ class MainWindow(QMainWindow):
             self.tray.hide()
         self.engine.stop(datetime.now())
         self.flush_now()
+        if self.mini is not None:
+            self.mini.save_geometry()  # quitting from mini mode skips its closeEvent
         try:
             self.sync_now()  # publish final state to the sync folder
         except Exception:
